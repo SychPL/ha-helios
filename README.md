@@ -1,6 +1,6 @@
 # Helios - integracja Home Assistant dla Lenovo Smart Clock 2
 
-Integracja dla zegara z aplikacją [Helios](https://github.com/OWNER/helios) (Lenovo Smart Clock 2 jako dashboard i satelita głosowy Home Assistant). Zegar łączy się z HA własnym gniazdem WebSocket; ta integracja rejestruje urządzenie i encje po stronie HA. Bez zależności pip, wyłącznie push (`iot_class: local_push`).
+Integracja dla zegara z aplikacją [Helios](https://github.com/SychPL/helios) (Lenovo Smart Clock 2 jako dashboard i satelita głosowy Home Assistant). Zegar łączy się z HA własnym gniazdem WebSocket; ta integracja rejestruje urządzenie i encje po stronie HA. Bez zależności pip, wyłącznie push (`iot_class: local_push`).
 
 ## Co daje
 

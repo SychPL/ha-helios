@@ -1,16 +1,16 @@
 {
   "codeowners": [
-    "@OWNER"
+    "@SychPL"
   ],
   "config_flow": true,
   "dependencies": [
     "websocket_api"
   ],
-  "documentation": "https://github.com/OWNER/hacs-helios",
+  "documentation": "https://github.com/SychPL/ha-helios",
   "domain": "helios",
   "integration_type": "device",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/OWNER/hacs-helios/issues",
+  "issue_tracker": "https://github.com/SychPL/ha-helios/issues",
   "name": "Helios",
   "requirements": [],
   "version": "0.7.0"
