@@ -10,6 +10,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.device_registry import async_track_device_registry_updated_event
 
 from .const import DOMAIN, PROTOCOL
 from .coordinator import HeliosCoordinator
@@ -82,14 +83,31 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
     sub_id = msg["id"]
     coordinator.attach(connection, sub_id)
 
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, installation_id)})
+
+    @callback
+    def device_updated(event) -> None:
+        """Name or area edited in HA: tell the clock so its player name and voice context follow the HA device."""
+        if not coordinator.is_owner(connection, sub_id):
+            return
+        current = dr.async_get(hass).async_get(event.data["device_id"])
+        if current is not None:
+            connection.send_event(sub_id, {"type": "device", "device_id": current.id, "area_id": current.area_id, "name": current.name_by_user or current.name})
+
+    unsubscribe_registry = async_track_device_registry_updated_event(hass, device.id, device_updated) if device else None
+
     @callback
     def cleanup() -> None:
+        if unsubscribe_registry is not None:
+            unsubscribe_registry()
         coordinator.detach(connection, sub_id, "disconnected")
 
     connection.subscriptions[sub_id] = cleanup
     connection.send_result(sub_id)
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, installation_id)})
-    connection.send_event(sub_id, {"type": "connected", "device_id": device.id if device else None, "area_id": device.area_id if device else None})
+    connection.send_event(
+        sub_id,
+        {"type": "connected", "device_id": device.id if device else None, "area_id": device.area_id if device else None, "name": (device.name_by_user or device.name) if device else None},
+    )
 
 
 @websocket_api.websocket_command({vol.Required("type"): "helios/state", vol.Required("state"): dict})
