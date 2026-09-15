@@ -108,6 +108,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
         sub_id,
         {"type": "connected", "device_id": device.id if device else None, "area_id": device.area_id if device else None, "name": (device.name_by_user or device.name) if device else None},
     )
+    coordinator.send_appearance()
 
 
 @websocket_api.websocket_command({vol.Required("type"): "helios/state", vol.Required("state"): dict})

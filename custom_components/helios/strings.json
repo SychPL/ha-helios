@@ -12,5 +12,50 @@
       "timeout": "Zegar nie połączył się w czasie ważności kodu.",
       "reconfigured": "Zegar był już dodany; powiązanie zostało odświeżone."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wygląd zegara",
+        "description": "Ustawienia dotyczą tylko tego zegara. Zdjęcie jest przechowywane prywatnie w Home Assistant i pobierane przez zegar po zalogowaniu.",
+        "data": {
+          "theme": "Motyw",
+          "background": "Tło",
+          "dim": "Przyciemnienie zdjęcia",
+          "focus_x": "Punkt kadru w poziomie",
+          "focus_y": "Punkt kadru w pionie"
+        }
+      },
+      "upload": {
+        "title": "Zdjęcie tła",
+        "description": "JPEG lub PNG do 10 MB. Zdjęcie zostanie zmniejszone do 1600×960, a metadane (EXIF, GPS) usunięte.",
+        "data": {
+          "file": "Plik"
+        }
+      }
+    },
+    "error": {
+      "no_image": "Nie ma zapisanego zdjęcia - wgraj nowe albo wybierz kolor.",
+      "file_too_large": "Plik jest większy niż 10 MB.",
+      "unsupported_format": "Obsługiwane są tylko JPEG i PNG.",
+      "animated_image": "Animowane obrazy nie są obsługiwane.",
+      "image_too_large": "Obraz ma za dużo pikseli (maks. 24 mln, 8192 na bok).",
+      "corrupt_image": "Nie udało się odczytać obrazu."
+    }
+  },
+  "selector": {
+    "theme": {
+      "options": {
+        "warm_graphite": "Ciepły grafit",
+        "night_blue": "Nocny błękit"
+      }
+    },
+    "background": {
+      "options": {
+        "solid": "Kolor motywu",
+        "keep": "Zachowaj bieżące zdjęcie",
+        "upload": "Wgraj nowe zdjęcie"
+      }
+    }
   }
 }

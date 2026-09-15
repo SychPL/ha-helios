@@ -12,6 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from . import appearance as ap
 from .const import COMMAND_TIMEOUT_SECONDS, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -55,6 +56,16 @@ class HeliosCoordinator(DataUpdateCoordinator[dict]):
         self.available = False
         self._fail_pending(reason)
         self.async_update_listeners()
+
+    @callback
+    def send_appearance(self) -> None:
+        """Full appearance snapshot (never a delta) on the active subscription; silently nothing while offline."""
+        if self.connection is None:
+            return
+        try:
+            self.connection.send_event(self.sub_id, {"type": "appearance", "appearance": ap.snapshot(self.entry.entry_id, self.entry.options)})
+        except Exception:  # noqa: BLE001 - the socket may be closing; the next connected resends it
+            pass
 
     @callback
     def send_removed(self) -> None:

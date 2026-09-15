@@ -38,3 +38,13 @@ Ponowne parowanie tego samego zegara odświeża istniejący wpis. Usunięcie int
 `python -m pytest tests` uruchamia testy czystych helperów (mapowanie jasności, walidacja komend, kody parowania) bez Home Assistant. Workflow GitHub uruchamia hassfest, walidację HACS i te testy.
 
 Protokół kanału (`helios/connect`, `helios/state`, `helios/result`) opisuje specyfikacja w repozytorium aplikacji: `docs/SPEC-0.7-home-assistant-integration.md`.
+
+## Wygląd zegara (tło i motyw)
+
+Ustawienia → Urządzenia i usługi → Helios → wybrany zegar → **Konfiguruj**:
+
+- motyw: Ciepły grafit / Nocny błękit,
+- tło: kolor motywu, zachowaj bieżące zdjęcie albo wgraj nowe (JPEG/PNG do 10 MB),
+- przyciemnienie 35-80 % i punkt kadru.
+
+Zdjęcie jest normalizowane w HA (orientacja EXIF, usunięcie metadanych, spłaszczenie przezroczystości, obwiednia 1600×960, JPEG ≤ 2 MB) i zapisane prywatnie w `config/helios/<entry_id>/`. Zegar pobiera je uwierzytelnionym GET `/api/helios/appearance/<entry_id>/<image_id>` (tylko właściciel parowania albo administrator). Zapis wyglądu nie restartuje integracji, muzyki ani zegara - zegar dostaje pełny snapshot `appearance` przez istniejącą subskrypcję.
