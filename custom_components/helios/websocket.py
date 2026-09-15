@@ -10,7 +10,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.device_registry import async_track_device_registry_updated_event
+from homeassistant.helpers.event import async_track_device_registry_updated_event
 
 from .const import DOMAIN, PROTOCOL
 from .coordinator import HeliosCoordinator
