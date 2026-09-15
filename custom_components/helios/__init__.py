@@ -18,8 +18,10 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    hass.data.setdefault(DOMAIN, {"pairing": PairingRegistry(), "entries": {}})
-    websocket.async_register(hass)
+    data = hass.data.setdefault(DOMAIN, {"pairing": PairingRegistry(), "entries": {}})
+    if not data.get("ws_registered"):
+        websocket.async_register(hass)
+        data["ws_registered"] = True
     return True
 
 

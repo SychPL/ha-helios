@@ -8,6 +8,7 @@ import secrets
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import callback
 
+from . import websocket
 from .const import DOMAIN, PAIRING_TTL_SECONDS, PairingRegistry
 
 
@@ -26,6 +27,12 @@ class HeliosConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.hass.data.setdefault(DOMAIN, {"pairing": PairingRegistry(), "entries": {}})["pairing"]
 
     async def async_step_user(self, user_input=None) -> ConfigFlowResult:
+        # First pairing happens before any config entry exists, so async_setup has not run yet:
+        # the helios/* websocket commands must be available for the clock right now.
+        data = self.hass.data.setdefault(DOMAIN, {"pairing": PairingRegistry(), "entries": {}})
+        if not data.get("ws_registered"):
+            websocket.async_register(self.hass)
+            data["ws_registered"] = True
         if self._code is None:
             self._code = f"{secrets.randbelow(10**6):06d}"
             self._future = self.hass.loop.create_future()
