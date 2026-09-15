@@ -1,0 +1,17 @@
+{
+  "codeowners": [
+    "@OWNER"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/OWNER/hacs-helios",
+  "domain": "helios",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/OWNER/hacs-helios/issues",
+  "name": "Helios",
+  "requirements": [],
+  "version": "0.7.0"
+}
