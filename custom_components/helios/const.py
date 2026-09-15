@@ -15,6 +15,9 @@ COMMANDS: dict[str, dict[str, tuple[int, int]]] = {
     "lamp.turn_off": {},
     "lamp.set_brightness": {"level": (1, 10)},
     "audio.set_device_volume": {"percent": (0, 100)},
+    "music.play": {},
+    "music.pause": {},
+    "music.stop": {},
 }
 
 

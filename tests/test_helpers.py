@@ -28,6 +28,8 @@ def test_command_validation_is_an_allowlist_with_typed_ranges():
     assert const.validate_command("lamp.set_brightness", {"level": True}) == "invalid_args"
     assert const.validate_command("lamp.set_brightness", {}) == "invalid_args"
     assert const.validate_command("lamp.turn_on", {"extra": 1}) == "invalid_args"
+    assert const.validate_command("music.stop", {}) is None
+    assert const.validate_command("music.stop", {"force": True}) == "invalid_args"
     assert const.validate_command("shell.exec", {"cmd": "rm"}) == "unknown_command"
 
 

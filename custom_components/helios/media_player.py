@@ -1,4 +1,4 @@
-"""The clock's own output volume as a media_player, so Assist intents ("głośniej", "ustaw głośność na 30 %") can target it by area."""
+"""The clock as a media_player: its own output volume plus play/pause/stop of the local music session, so Assist intents ("głośniej", "wyłącz muzykę") can target it by area."""
 
 from __future__ import annotations
 
@@ -18,11 +18,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class HeliosSpeaker(HeliosEntity, MediaPlayerEntity):
-    """Device volume only: not a music source. Music Assistant exposes its own player for playback."""
+    """Device volume plus transport of the clock's local session (0.8.7+). Not a music source: Music Assistant exposes its own player for browsing."""
 
     _attr_name = "Głośnik zegara"
     _attr_device_class = MediaPlayerDeviceClass.SPEAKER
-    _attr_supported_features = MediaPlayerEntityFeature.VOLUME_SET | MediaPlayerEntityFeature.VOLUME_STEP
+    _attr_supported_features = (
+        MediaPlayerEntityFeature.VOLUME_SET
+        | MediaPlayerEntityFeature.VOLUME_STEP
+        | MediaPlayerEntityFeature.PLAY
+        | MediaPlayerEntityFeature.PAUSE
+        | MediaPlayerEntityFeature.STOP
+        | MediaPlayerEntityFeature.TURN_OFF
+    )
     _attr_icon = "mdi:speaker"
 
     def __init__(self, coordinator) -> None:
@@ -32,8 +39,26 @@ class HeliosSpeaker(HeliosEntity, MediaPlayerEntity):
     def state(self) -> MediaPlayerState | None:
         if not self.available:
             return None
+        music = self.coordinator.value("music_state")
+        if music == "playing":
+            return MediaPlayerState.PLAYING
+        if music == "paused":
+            return MediaPlayerState.PAUSED
         voice = self.coordinator.value("voice_state")
         return MediaPlayerState.PLAYING if voice == "responding" else MediaPlayerState.IDLE
+
+    async def async_media_play(self) -> None:
+        await self.coordinator.async_command("music.play", {})
+
+    async def async_media_pause(self) -> None:
+        await self.coordinator.async_command("music.pause", {})
+
+    async def async_media_stop(self) -> None:
+        await self.coordinator.async_command("music.stop", {})
+
+    async def async_turn_off(self) -> None:
+        """"Wyłącz muzykę" lands here through the Assist media intents: stop the local session, the clock itself stays on."""
+        await self.coordinator.async_command("music.stop", {})
 
     @property
     def volume_level(self) -> float | None:
