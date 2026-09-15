@@ -13,6 +13,7 @@ Integracja dla zegara z aplikacją [Helios](https://github.com/SychPL/helios) (L
 | `binary_sensor` Ładowanie telefonu | listener ładowania Qi; niedostępny bez docka |
 | `light` Lampka docka | on/off z odczytu OEM, jasność 1-10 jako nastawa |
 | `number` Głośność urządzenia | `STREAM_MUSIC` 0-100 %, odczyt co 3 s |
+| `media_player` Głośnik zegara | ta sama głośność urządzenia jako odtwarzacz (tylko `volume_set`/`volume_step`), żeby Assist rozumiał "głośniej"/"ustaw głośność" w obszarze zegara; muzykę obsługuje osobny odtwarzacz Music Assistant |
 
 Urządzenie w rejestrze HA ma stały identyfikator instalacji Heliosa, więc obszar przypisany w HA daje kontekst pokoju dla poleceń głosowych (`device_id` w `assist_pipeline/run`).
 

@@ -13,7 +13,7 @@ from . import websocket
 from .const import DOMAIN, PairingRegistry
 from .coordinator import HeliosCoordinator
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.LIGHT, Platform.NUMBER]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.LIGHT, Platform.NUMBER, Platform.MEDIA_PLAYER]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
