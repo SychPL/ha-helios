@@ -12,7 +12,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_device_registry_updated_event
 
-from .const import DOMAIN, PROTOCOL
+from . import identity
+from .const import DOMAIN, PROTOCOL, PROTOCOLS
 from .coordinator import HeliosCoordinator
 
 
@@ -38,46 +39,68 @@ def _coordinator_for_connection(hass: HomeAssistant, connection) -> HeliosCoordi
         vol.Required("app_version"): cv.string,
         vol.Required("version_code"): int,
         vol.Optional("capabilities"): [cv.string],
-        vol.Optional("pairing_code"): cv.string,
     }
 )
 @websocket_api.async_response
 async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
-    """Subscription owned by one clock; a pairing code creates or re-binds the config entry first."""
+    """Subscription owned by one clock (SPEC 0.10 pkt 4.1, 6.2): the entry must exist and belong to this user; pairing happens over HTTP."""
     data = hass.data[DOMAIN]
     installation_id = msg["installation_id"]
-    if msg["protocol"] != PROTOCOL:
+    if msg["protocol"] not in PROTOCOLS:
         connection.send_error(msg["id"], "unsupported_protocol", f"Helios obsługuje protokół {PROTOCOL}")
         return
-    code = msg.get("pairing_code")
-    if code:
-        pending = data["pairing"].claim(code)
-        if pending is None:
-            connection.send_error(msg["id"], "unauthorized", "Nieprawidłowy lub wygasły kod parowania")
-            return
-        if not pending["future"].done():
-            pending["future"].set_result(
-                {"installation_id": installation_id, "user_id": connection.user.id, "app_version": msg["app_version"], "version_code": msg["version_code"]}
-            )
-        try:
-            await asyncio.wait_for(pending["done"].wait(), 30)
-        except TimeoutError:
-            connection.send_error(msg["id"], "pairing_failed", "Parowanie nie zostało dokończone w HA")
-            return
-    entry = _entry_for(hass, installation_id)
+
+    def owned():
+        """The entry as of now, or None when it is gone or belongs to someone else (re-paired meanwhile)."""
+        current = _entry_for(hass, installation_id)
+        return current if current is not None and current.data.get("user_id") == connection.user.id else None
+
+    entry = owned()
     if entry is None:
-        connection.send_error(msg["id"], "unauthorized", "Nieznane urządzenie - dodaj integrację Helios i sparuj")
+        connection.send_error(msg["id"], "unauthorized", "Nieznane urządzenie albo sparowane z innym użytkownikiem - sparuj kodem")
         return
-    if entry.data.get("user_id") != connection.user.id:
-        connection.send_error(msg["id"], "unauthorized", "To urządzenie jest sparowane z innym użytkownikiem HA")
-        return
+    section = entry.data.get("music_assistant")
+    source = identity.music_source(hass)
+    stale = section is not None and (source is None or section["url"] != source[0])  # MA gone or moved: the stored section is dead
+    missing = section is None and source is not None
+    if stale or missing:
+        lock = data["locks"].setdefault(installation_id, asyncio.Lock())
+        try:
+            async with lock:  # the same lock the pairing transaction holds through its steps 3-5
+                entry = owned()
+                if entry is None:
+                    connection.send_error(msg["id"], "unauthorized", "To urządzenie zostało sparowane ponownie")
+                    return
+                if entry.data.get("music_assistant") != section:
+                    section = entry.data.get("music_assistant")  # another connect already did the work
+                else:
+                    old = section
+                    fresh = await identity.async_create_music_section(hass, installation_id) if source is not None else None
+                    try:
+                        hass.config_entries.async_update_entry(entry, data={**entry.data, "music_assistant": fresh})
+                    except Exception:  # noqa: BLE001 - the stored (old) section stays valid: only the token of this attempt goes
+                        await identity.async_revoke_music_section(hass, fresh)
+                    else:
+                        section = fresh
+                        await identity.async_revoke_music_section(hass, old)  # only after the new section is persisted (best effort when the server is gone)
+        finally:
+            if not lock.locked() and not lock._waiters:  # noqa: SLF001 - every exit path drops an idle lock
+                data["locks"].pop(installation_id, None)
     coordinator: HeliosCoordinator | None = None
     for _ in range(50):  # a freshly created or reloaded entry finishes its setup shortly after the flow completes
+        entry = owned()
+        if entry is None:
+            break
         coordinator = data["entries"].get(entry.entry_id)
         if coordinator is not None:
             break
         await asyncio.sleep(0.2)
-    if coordinator is None:
+    # directly before attach, after the last await: a re-pair or reload meanwhile replaces both the entry data and the coordinator
+    entry = owned()
+    if entry is None:
+        connection.send_error(msg["id"], "unauthorized", "To urządzenie zostało sparowane ponownie")
+        return
+    if coordinator is None or data["entries"].get(entry.entry_id) is not coordinator:
         connection.send_error(msg["id"], "not_ready", "Integracja Helios jeszcze się ładuje")
         return
     sub_id = msg["id"]
@@ -109,6 +132,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
         {"type": "connected", "device_id": device.id if device else None, "area_id": device.area_id if device else None, "name": (device.name_by_user or device.name) if device else None},
     )
     coordinator.send_appearance()
+    coordinator.send_connection(identity.connection_payload(hass, dict(entry.data), dict(entry.options)))
 
 
 @websocket_api.websocket_command({vol.Required("type"): "helios/state", vol.Required("state"): dict})
