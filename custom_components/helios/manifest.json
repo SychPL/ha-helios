@@ -1,6 +1,9 @@
 {
   "domain": "helios",
   "name": "Helios",
+  "after_dependencies": [
+    "music_assistant"
+  ],
   "codeowners": [
     "@SychPL"
   ],
@@ -10,9 +13,6 @@
     "file_upload",
     "http",
     "websocket_api"
-  ],
-  "after_dependencies": [
-    "music_assistant"
   ],
   "documentation": "https://github.com/SychPL/ha-helios",
   "integration_type": "device",
