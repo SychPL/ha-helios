@@ -21,21 +21,24 @@ Urządzenie w rejestrze HA ma stały identyfikator instalacji Heliosa, więc obs
 
 1. HACS → Integracje → menu ⋮ → **Niestandardowe repozytoria** → dodaj URL tego repozytorium, kategoria *Integracja*.
 2. Zainstaluj **Helios** i zrestartuj Home Assistant.
-3. Ustawienia → Urządzenia i usługi → **Dodaj integrację** → Helios. HA pokaże 6-cyfrowy kod ważny 5 minut.
-4. Na zegarze (Helios 0.7.0 lub nowszy) przytrzymaj HELIOS → **Paruj z HA (kod)** → wpisz kod → OK.
-5. Przypisz urządzenie do obszaru.
+3. Na zegarze (Helios 0.9.0 lub nowszy): przytrzymaj HELIOS → **Paruj z HA** → wybierz swój Home Assistant z listy (mDNS) albo wpisz adres.
+4. Ustawienia → Urządzenia i usługi → **Dodaj integrację** → Helios. HA pokaże 6-cyfrowy kod ważny 5 minut; zostaw to okno otwarte.
+5. Na zegarze dotknij **Dalej** i wpisz kod → OK. Zegar dostaje własny token HA (bez wklejania czegokolwiek), a jeśli w HA jest integracja Music Assistant, także dostęp do muzyki.
+6. Przypisz urządzenie do obszaru.
 
-Ponowne parowanie tego samego zegara odświeża istniejący wpis. Usunięcie integracji kończy kanał: zegar przestaje przekazywać `device_id` i nie kontynuuje starych rozmów.
+Ponowne parowanie tego samego zegara odświeża istniejący wpis (nowy token, stary unieważniony). Usunięcie integracji usuwa użytkownika HA zegara i jego token Music Assistant; zegar przestaje przekazywać `device_id` i prosi o ponowne parowanie. Zegary z Heliosem 0.8.x (parowane przez WebSocket z tokenem administratora) działają dalej do czasu ponownego parowania kodem po aktualizacji aplikacji.
 
 ## Zachowanie i bezpieczeństwo
 
 - Encje są niedostępne, dopóki zegar nie prześle pierwszego snapshotu; rozłączenie gniazda oznacza je jako `unavailable` bez dodatkowych heartbeatów.
 - Polecenia (`lamp.turn_on`, `lamp.turn_off`, `lamp.set_brightness`, `audio.set_device_volume`) to zamknięta lista; HA czeka na potwierdzenie do 10 s i nigdy nie ponawia.
-- Kanał przyjmuje tylko połączenia użytkownika HA, z którym zegar został sparowany. Użyj dla zegara dedykowanego konta bez uprawnień administratora.
+- Każdy zegar ma własnego użytkownika systemowego HA (bez uprawnień administratora, tylko z sieci lokalnej) i token ważny 10 lat, tworzone przy parowaniu i usuwane razem z wpisem. Kanał przyjmuje tylko połączenia tego użytkownika.
+- Parowanie idzie przez nieuwierzytelniony `POST /api/helios/pair` w sieci lokalnej: kod 6 cyfr ważny 5 minut, po 5 błędnych próbach z jednego adresu ten adres jest blokowany na 5 minut, odpowiedzi błędów nie zdradzają niczego, kod i token nie trafiają do dziennika.
+- Music Assistant: integracja bierze adres i token z wpisu core `music_assistant`, tworzy dla zegara osobny token MA (widoczny na liście tokenów w MA) i podaje adres Sendspin (`ws://<host MA>:8927/sendspin`, do nadpisania w opcjach). Bez MA w HA zegar działa bez muzyki.
 
 ## Rozwój
 
-`python -m pytest tests` uruchamia testy czystych helperów (mapowanie jasności, walidacja komend, kody parowania) bez Home Assistant. Workflow GitHub uruchamia hassfest, walidację HACS i te testy.
+`pip install -r requirements_test.txt && python -m pytest tests` (Python 3.14, instaluje Home Assistant 2026.8.3 przez `pytest-homeassistant-custom-component`) uruchamia testy czystych helperów i testy komponentowe parowania, tożsamości i kanału. Workflow GitHub uruchamia hassfest, walidację HACS, te testy i kontrolę importu.
 
 Protokół kanału (`helios/connect`, `helios/state`, `helios/result`) opisuje specyfikacja w repozytorium aplikacji: `docs/SPEC-0.7-home-assistant-integration.md`.
 
@@ -45,6 +48,7 @@ Ustawienia → Urządzenia i usługi → Helios → wybrany zegar → **Konfigur
 
 - motyw: Ciepły grafit / Nocny błękit,
 - tło: kolor motywu, zachowaj bieżące zdjęcie albo wgraj nowe (JPEG/PNG do 10 MB),
-- przyciemnienie 35-80 % i punkt kadru.
+- przyciemnienie 35-80 % i punkt kadru,
+- adres Sendspin (puste = wyliczony z adresu Music Assistant) i adres diagnostyki (puste = brak) - zegar dostaje je od razu przez subskrypcję.
 
 Zdjęcie jest normalizowane w HA (orientacja EXIF, usunięcie metadanych, spłaszczenie przezroczystości, obwiednia 1600×960, JPEG ≤ 2 MB) i zapisane prywatnie w `config/helios/<entry_id>/`. Zegar pobiera je uwierzytelnionym GET `/api/helios/appearance/<entry_id>/<image_id>` (tylko właściciel parowania albo administrator). Zapis wyglądu nie restartuje integracji, muzyki ani zegara - zegar dostaje pełny snapshot `appearance` przez istniejącą subskrypcję.
