@@ -1,7 +1,8 @@
 """Component tests run against the real HA 2026.8.3 (pytest-homeassistant-custom-component pins it)."""
 
 import sys
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -27,5 +28,6 @@ if sys.platform == "win32":
     @pytest.fixture(scope="session")
     def mock_zeroconf_resolver():
         """Windows: pycares opens a socket while pytest-socket is armed; the resolver is never exercised by these tests."""
-        with patch("homeassistant.helpers.aiohttp_client._async_make_resolver") as patcher:
+        resolver = SimpleNamespace(close=lambda: None, real_close=AsyncMock())  # HA awaits real_close() at shutdown
+        with patch("homeassistant.helpers.aiohttp_client._async_make_resolver", return_value=resolver) as patcher:
             yield patcher

@@ -1,3 +1,11 @@
 pytest-homeassistant-custom-component==0.13.357
 pillow
 music-assistant-client==1.4.3
+# requirements of assist_pipeline and its dependencies (identity.preferred_pipeline imports the component)
+hassil==3.11.0
+home-assistant-intents==2026.7.30
+pymicro-vad==1.0.1; sys_platform != "win32"
+pyspeex-noise==1.0.2; sys_platform != "win32"
+# on Windows these two need a C++ toolchain: stub modules in the venv instead (only imported, never executed by the tests)
+mutagen==1.48.1
+ha-ffmpeg==3.2.2
