@@ -1,10 +1,7 @@
-import pytest
-
 from custom_components.helios import async_setup
 from custom_components.helios.const import DOMAIN
 
 
-@pytest.mark.xfail(strict=True, reason="A4: async_register_views")
 async def test_setup_registers_both_views_once(hass):
     from homeassistant.setup import async_setup_component
 

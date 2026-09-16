@@ -22,7 +22,7 @@ class HeliosCoordinator(DataUpdateCoordinator[dict]):
     """Push-only coordinator: the clock owns exactly one active subscription; commands travel over it."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=None)
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=None, config_entry=entry)  # explicit: HA 2026.x refuses the ContextVar fallback
         self.entry = entry
         self.installation_id: str = entry.data["installation_id"]
         self.connection = None
@@ -64,6 +64,16 @@ class HeliosCoordinator(DataUpdateCoordinator[dict]):
             return
         try:
             self.connection.send_event(self.sub_id, {"type": "appearance", "appearance": ap.snapshot(self.entry.entry_id, self.entry.options)})
+        except Exception:  # noqa: BLE001 - the socket may be closing; the next connected resends it
+            pass
+
+    @callback
+    def send_connection(self, payload: dict) -> None:
+        """The connection event (pipeline, dashboard path, MA section, diagnostics) after connected and after every options save."""
+        if self.connection is None:
+            return
+        try:
+            self.connection.send_event(self.sub_id, payload)
         except Exception:  # noqa: BLE001 - the socket may be closing; the next connected resends it
             pass
 

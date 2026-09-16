@@ -15,6 +15,16 @@ def auto_enable_custom_integrations(request):
         yield None
 
 
+@pytest.fixture(autouse=True)
+async def core_component(request):
+    """helios depends on assist_pipeline, whose conversation dependency needs the core `homeassistant` component set up first."""
+    if "hass" in request.fixturenames:
+        from homeassistant.setup import async_setup_component
+
+        hass = request.getfixturevalue("hass")
+        assert await async_setup_component(hass, "homeassistant", {})
+
+
 if sys.platform == "win32":
     try:
         import pytest_socket

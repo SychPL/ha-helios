@@ -24,7 +24,8 @@ from homeassistant.helpers.selector import (
 
 from . import appearance as ap
 from . import websocket
-from .const import DOMAIN, PAIRING_TTL_SECONDS, PairingRegistry
+from .const import DOMAIN, PAIRING_TTL_SECONDS, PairingRegistry, new_domain_data
+from .http import async_register_views
 
 
 class HeliosConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -36,6 +37,7 @@ class HeliosConfigFlow(ConfigFlow, domain=DOMAIN):
         self._done: asyncio.Event | None = None
         self._task: asyncio.Task | None = None
         self._timed_out = False
+        self._pending: dict | None = None
 
     @staticmethod
     @callback
@@ -44,20 +46,22 @@ class HeliosConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @property
     def _registry(self) -> PairingRegistry:
-        return self.hass.data.setdefault(DOMAIN, {"pairing": PairingRegistry(), "entries": {}})["pairing"]
+        return self.hass.data.setdefault(DOMAIN, new_domain_data())["pairing"]
 
     async def async_step_user(self, user_input=None) -> ConfigFlowResult:
         # First pairing happens before any config entry exists, so async_setup has not run yet:
-        # the helios/* websocket commands must be available for the clock right now.
-        data = self.hass.data.setdefault(DOMAIN, {"pairing": PairingRegistry(), "entries": {}})
+        # the helios/* websocket commands and the pairing endpoint must be available for the clock right now.
+        data = self.hass.data.setdefault(DOMAIN, new_domain_data())
         if not data.get("ws_registered"):
             websocket.async_register(self.hass)
             data["ws_registered"] = True
+        async_register_views(self.hass)
         if self._code is None:
             self._code = f"{secrets.randbelow(10**6):06d}"
             self._future = self.hass.loop.create_future()
             self._done = asyncio.Event()
-            self._registry.issue(self._code, {"future": self._future, "done": self._done})
+            self._pending = {"future": self._future, "done": self._done, "flow_id": self.flow_id, "cancelled": False, "existing": None}
+            self._registry.issue(self._code, self._pending)
             self._task = self.hass.async_create_task(self._wait_for_clock())
         if not self._task.done():
             return self.async_show_progress(
@@ -75,19 +79,17 @@ class HeliosConfigFlow(ConfigFlow, domain=DOMAIN):
             self._timed_out = True
 
     async def async_step_finish(self, user_input=None) -> ConfigFlowResult:
+        """The pairing endpoint did the work (SPEC 0.10 pkt 4.1): a new entry is created here, an existing one was updated by the endpoint."""
         self._registry.cancel(self._code)
-        if self._timed_out or self._future is None or not self._future.done():
+        if self._timed_out or self._future is None or not self._future.done() or (self._pending or {}).get("cancelled"):
             self._release()
             return self.async_abort(reason="timeout")
         data = self._future.result()
+        if data.get("reconfigured"):
+            self._release()
+            return self.async_abort(reason="reconfigured")
         await self.async_set_unique_id(data["installation_id"])
-        existing = self._async_current_entries()
-        for entry in existing:
-            if entry.unique_id == data["installation_id"]:
-                self.hass.config_entries.async_update_entry(entry, data={**entry.data, **data})
-                self.hass.async_create_task(self.hass.config_entries.async_reload(entry.entry_id))
-                self._release()
-                return self.async_abort(reason="reconfigured")
+        self._abort_if_unique_id_configured()
         result = self.async_create_entry(title=f"Helios {data['installation_id'][:8]}", data=data)
         self._release()
         return result
@@ -173,7 +175,7 @@ class HeliosOptionsFlow(OptionsFlow):
 
     async def _save(self, data: bytes | None) -> ConfigFlowResult:
         entry = self.config_entry
-        locks = self.hass.data.setdefault(DOMAIN, {}).setdefault("locks", {})
+        locks = self.hass.data.setdefault(DOMAIN, new_domain_data())["locks"]
         lock = locks.setdefault(entry.entry_id, asyncio.Lock())
         async with lock:
             options = dict(entry.options)
