@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DASHBOARD_PATH, MA_TIMEOUT_SECONDS, sendspin_url_for
+from .const import DASHBOARD_PATH, MA_TIMEOUT_SECONDS, MUSIC_SECTION_REVISION, sendspin_url_for
 
 _LOGGER = logging.getLogger(__name__)
 TOKEN_LIFETIME = timedelta(days=3650)
@@ -136,7 +136,7 @@ async def async_create_music_section(hass: HomeAssistant, installation_id: str) 
         if isinstance(err, asyncio.CancelledError):
             raise
         return None
-    section = {"url": public, "source_url": url, "token": clock_token}
+    section = {"url": public, "source_url": url, "token": clock_token, "minted": MUSIC_SECTION_REVISION}
     refused = await _token_refused(hass, section)
     if refused:
         _LOGGER.warning("Music Assistant odrzuca token zegara pod adresem %s (%s) - zegar bez muzyki", public, refused)

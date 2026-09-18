@@ -13,7 +13,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_device_registry_updated_event
 
 from . import identity
-from .const import DOMAIN, PROTOCOL, PROTOCOLS
+from .const import DOMAIN, MUSIC_SECTION_REVISION, PROTOCOL, PROTOCOLS
 from .coordinator import HeliosCoordinator
 
 
@@ -61,8 +61,10 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
         return
     section = entry.data.get("music_assistant")
     source = identity.music_source(hass)
-    # a section from 0.8.0 has no source_url: it holds the supervisor-internal address, so refresh it once (SPEC 0.10 pkt 6.1)
-    stale = section is not None and (source is None or section.get("source_url") != source[0])
+    # MA gone, a different MA server, or a section minted by an older version (its address or token is unusable for the clock)
+    stale = section is not None and (
+        source is None or section.get("source_url") != source[0] or section.get("minted") != MUSIC_SECTION_REVISION
+    )
     missing = section is None and source is not None
     if stale or missing:
         lock = data["locks"].setdefault(installation_id, asyncio.Lock())

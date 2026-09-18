@@ -123,7 +123,7 @@ async def test_a_section_from_0_8_0_is_refreshed_once(hass, hass_ws_client, monk
         revoked.append(section)
 
     async def fake_create(hass, installation_id):
-        return {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "new-clock-token"}
+        return {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "new-clock-token", "minted": 2}
 
     monkeypatch.setattr(identity, "async_revoke_music_section", fake_revoke)
     monkeypatch.setattr(identity, "async_create_music_section", fake_create)
@@ -134,7 +134,14 @@ async def test_a_section_from_0_8_0_is_refreshed_once(hass, hass_ws_client, monk
     ws2 = await hass_ws_client(hass, access_token=token)
     revoked.clear()
     _, events = await connect(ws2, msg_id=2)
-    assert revoked == [], "a section with a matching source_url is not refreshed again"
+    assert revoked == [], "a section of the current revision is not refreshed again"
+
+    # a 0.8.1 section: right address, but a token MA refuses on its LAN webserver - the revision marker forces one refresh
+    hass.config_entries.async_update_entry(entry, data={**entry.data, "music_assistant": {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "system-user-token"}})
+    ws3 = await hass_ws_client(hass, access_token=token)
+    _, events = await connect(ws3, msg_id=3)
+    assert events[2]["music_assistant"]["token"] == "new-clock-token"
+    assert revoked and revoked[-1]["token"] == "system-user-token"
 
 
 async def test_ma_removed_from_ha_drops_the_section(hass, hass_ws_client, monkeypatch):

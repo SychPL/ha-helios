@@ -18,6 +18,7 @@ FLOW_TIMEOUT_SECONDS = 20
 SETUP_TIMEOUT_SECONDS = 10
 MA_TIMEOUT_SECONDS = 5
 DASHBOARD_PATH = "helios-clock"
+MUSIC_SECTION_REVISION = 2  # bumped whenever a stored MA section has to be re-minted (0.8.0/0.8.1 sections are unusable, SPEC 0.10 pkt 6.2)
 COMMAND_TIMEOUT_SECONDS = 10
 
 _INSTALLATION_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")

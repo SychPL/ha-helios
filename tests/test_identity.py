@@ -131,7 +131,7 @@ async def test_music_section_is_created_and_revoked_through_the_ma_client(hass, 
     monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
     section = await identity.async_create_music_section(hass, INSTALLATION)
     # the clock gets the address the server reports, HA keeps the entry url for its own calls (SPEC 0.10 pkt 6.1)
-    assert section == {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "clock-token"}
+    assert section == {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "clock-token", "minted": 2}
     assert created[0][0] == "ma-token" and created[0][1].startswith("Helios 0f3c1b2a ") and len(created[0][1].split()[-1]) == 6
     await identity.async_revoke_music_section(hass, section)
     assert revoked == ["clock-token"]
