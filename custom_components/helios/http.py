@@ -159,7 +159,7 @@ async def _pair(hass: HomeAssistant, data: dict, pending: dict, parsed: dict) ->
     previous_user = previous_music = None
     try:
         user_id, token = await identity.async_create_identity(hass, installation_id)
-        music = await identity.async_create_music_section(hass, installation_id)
+        music = await identity.async_create_music_section(hass, installation_id, dict(existing.options) if existing is not None else {})
         entry_data = {"installation_id": installation_id, "user_id": user_id, "app_version": parsed["app_version"], "version_code": parsed["version_code"], "music_assistant": music}
         if existing is not None:
             previous = dict(existing.data)

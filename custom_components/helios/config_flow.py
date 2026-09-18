@@ -161,6 +161,7 @@ class HeliosOptionsFlow(OptionsFlow):
                 vol.Required("focus_y", default=background.get("focus_y", 50)): NumberSelector(
                     NumberSelectorConfig(min=0, max=100, step=1, mode=NumberSelectorMode.SLIDER, unit_of_measurement="%")
                 ),
+                vol.Optional("music_token", default=self.config_entry.options.get("music_token", "")): str,  # SPEC 0.10 pkt 6.2: empty = the integration mints one (an MA add-on does not allow that)
                 vol.Optional("music_url", default=self.config_entry.options.get("music_url", "")): str,  # SPEC 0.10 pkt 6.1: empty = the address Music Assistant reports
                 vol.Optional("sendspin_url", default=self.config_entry.options.get("sendspin_url", "")): str,  # SPEC 0.10 pkt 6.2: empty = derived from the MA url
                 vol.Optional("diagnostics_url", default=self.config_entry.options.get("diagnostics_url", "")): str,  # empty = no diagnostics sink
@@ -197,6 +198,7 @@ class HeliosOptionsFlow(OptionsFlow):
                 await self.hass.async_add_executor_job(ap.write_image, self._dir(), new_id, data)
                 options["image_id"] = new_id
             draft = self._draft or {}
+            options["music_token"] = (draft.get("music_token") or "").strip()
             options["music_url"] = (draft.get("music_url") or "").strip()
             options["sendspin_url"] = (draft.get("sendspin_url") or "").strip()
             options["diagnostics_url"] = (draft.get("diagnostics_url") or "").strip()

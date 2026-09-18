@@ -60,12 +60,17 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
         connection.send_error(msg["id"], "unauthorized", "Nieznane urządzenie albo sparowane z innym użytkownikiem - sparuj kodem")
         return
     section = entry.data.get("music_assistant")
-    source = identity.music_source(hass)
-    # MA gone, a different MA server, or a section minted by an older version (its address or token is unusable for the clock)
+    manual = (entry.options.get("music_token") or "").strip()
+    source = identity.music_source(hass) if not manual else identity.quiet_music_source(hass)
+    # MA gone, a different MA server, a pasted token that changed, or a section from an older version (address or token unusable)
     stale = section is not None and (
-        source is None or section.get("source_url") != source[0] or section.get("minted") != MUSIC_SECTION_REVISION
+        (source is None and not manual)
+        or (source is not None and section.get("source_url") != source[0])
+        or section.get("minted") != MUSIC_SECTION_REVISION
+        or (manual and section.get("token") != manual)
+        or (not manual and section.get("manual"))
     )
-    missing = section is None and source is not None
+    missing = section is None and (source is not None or manual)
     if stale or missing:
         lock = data["locks"].setdefault(installation_id, asyncio.Lock())
         try:
@@ -78,7 +83,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
                     section = entry.data.get("music_assistant")  # another connect already did the work
                 else:
                     old = section
-                    fresh = await identity.async_create_music_section(hass, installation_id) if source is not None else None
+                    fresh = await identity.async_create_music_section(hass, installation_id, dict(entry.options)) if (source is not None or manual) else None
                     try:
                         hass.config_entries.async_update_entry(entry, data={**entry.data, "music_assistant": fresh})
                     except Exception:  # noqa: BLE001 - the stored (old) section stays valid: only the token of this attempt goes

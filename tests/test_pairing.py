@@ -293,7 +293,7 @@ async def test_rollback_continues_when_one_step_fails(hass, hass_client_no_auth,
     monkeypatch.setattr(hass.config_entries.flow, "async_finish_flow", never_finish)
     monkeypatch.setattr(pair_http.identity, "async_remove_identity", broken_remove)
     monkeypatch.setattr(pair_http.identity, "async_revoke_music_section", fake_revoke)
-    monkeypatch.setattr(pair_http.identity, "async_create_music_section", lambda hass_, i: _coro({"url": "http://ma:8095", "token": "clock-token"}))
+    monkeypatch.setattr(pair_http.identity, "async_create_music_section", lambda hass_, i, options=None: _coro({"url": "http://ma:8095", "token": "clock-token"}))
     assert (await post(hass, client, flow_id, code)).status == 409, "a controlled answer, never a 500"
     assert revoked == [{"url": "http://ma:8095", "token": "clock-token"}], "the later step still ran"
     assert "użytkownik" in caplog.text and "store down" not in caplog.text
@@ -326,7 +326,7 @@ async def test_rollback_runs_all_steps_when_one_hangs(hass, hass_client_no_auth,
     monkeypatch.setattr(hass.config_entries.flow, "async_finish_flow", gated_finish)
     monkeypatch.setattr(pair_http.identity, "async_remove_identity", hung_remove)
     monkeypatch.setattr(pair_http.identity, "async_revoke_music_section", fake_revoke)
-    monkeypatch.setattr(pair_http.identity, "async_create_music_section", lambda hass_, i: _coro({"url": "http://ma:8095", "token": "clock-token"}))
+    monkeypatch.setattr(pair_http.identity, "async_create_music_section", lambda hass_, i, options=None: _coro({"url": "http://ma:8095", "token": "clock-token"}))
     started = asyncio.get_running_loop().time()
     assert (await post(hass, client, flow_id, code)).status == 409
     assert asyncio.get_running_loop().time() - started < 1.5

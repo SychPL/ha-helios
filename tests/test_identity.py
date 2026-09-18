@@ -292,3 +292,35 @@ async def test_ambiguous_create_token_revokes_only_this_attempt(hass, monkeypatc
     else:
         assert await identity.async_create_music_section(hass, INSTALLATION) is None
     assert revoked == ["t-ours"], "the foreign token with the same prefix stays"
+
+
+async def test_a_pasted_token_is_used_as_is_and_never_revoked(hass, monkeypatch):
+    """An MA add-on refuses to mint a token the clock could use, so the user pastes one once (SPEC 0.10 pkt 6.2)."""
+    log = []
+    monkeypatch.setattr(identity, "quiet_music_source", lambda hass: ("http://d5369777-music-assistant:8094", "ma-token"))
+    monkeypatch.setattr(identity, "music_source", lambda hass: pytest.fail("a pasted token must not go through minting"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
+    monkeypatch.setattr(identity, "_client", _fake_client(log, None))
+    section = await identity.async_create_music_section(hass, INSTALLATION, {"music_token": " pasted-token "})
+    assert section == {
+        "url": "http://192.168.1.212:8095",
+        "source_url": "http://d5369777-music-assistant:8094",
+        "token": "pasted-token",
+        "minted": 2,
+        "manual": True,
+    }
+    assert log == [], "nothing is minted and nothing is verified for the user's own token"
+    await identity.async_revoke_music_section(hass, section)
+    assert log == [], "a token the user owns is never revoked"
+
+
+async def test_a_pasted_token_with_an_address_override_needs_no_ma_entry(hass, monkeypatch):
+    monkeypatch.setattr(identity, "quiet_music_source", lambda hass: None)
+    section = await identity.async_create_music_section(hass, INSTALLATION, {"music_token": "t", "music_url": "http://192.168.1.212:8095"})
+    assert section["url"] == "http://192.168.1.212:8095" and section["source_url"] == ""
+
+
+async def test_a_pasted_token_without_any_address_is_refused(hass, monkeypatch, caplog):
+    monkeypatch.setattr(identity, "quiet_music_source", lambda hass: None)
+    assert await identity.async_create_music_section(hass, INSTALLATION, {"music_token": "t"}) is None
+    assert "nie znam adresu serwera" in caplog.text

@@ -111,13 +111,25 @@ async def _clock_user(client) -> str | None:
     return getattr(chosen, "user_id", None)
 
 
-async def async_create_music_section(hass: HomeAssistant, installation_id: str) -> dict | None:
-    """A clock-specific MA token minted with the core integration's token; None (with one warning) when MA is absent or fails."""
-    source = music_source(hass)
+async def async_create_music_section(hass: HomeAssistant, installation_id: str, options: dict | None = None) -> dict | None:
+    """The clock's Music Assistant access: the token pasted in the options, or one minted with the core entry's token.
+
+    None (with one warning) when MA is absent or when MA refuses to mint a token the clock could use.
+    """
+    options = options or {}
+    manual = (options.get("music_token") or "").strip()
+    source = music_source(hass) if not manual else quiet_music_source(hass)
+    override = (options.get("music_url") or "").strip()
+    if manual:
+        public = override or (await async_public_music_url(hass, source[0]) if source else "")
+        if not public:
+            _LOGGER.warning("Token MA jest ustawiony, ale nie znam adresu serwera - uzupełnij adres w opcjach integracji")
+            return None
+        return {"url": public, "source_url": source[0] if source else "", "token": manual, "minted": MUSIC_SECTION_REVISION, "manual": True}
     if source is None:
         return None
     url, token = source
-    public = await async_public_music_url(hass, url)  # the clock talks to this one, HA keeps using the entry's url
+    public = override or await async_public_music_url(hass, url)  # the clock talks to this one, HA keeps using the entry's url
     name = f"{_label(installation_id)} {secrets.token_hex(3)}"
     sent = False
     user_id = None
@@ -130,7 +142,15 @@ async def async_create_music_section(hass: HomeAssistant, installation_id: str) 
         _LOGGER.warning("music_assistant_client nie jest zainstalowany - zegar bez muzyki")
         return None
     except (Exception, asyncio.CancelledError) as err:  # CancelledError: the pairing transaction timed out around us
-        _LOGGER.warning("Nie udało się utworzyć tokena MA dla %s: %s", _label(installation_id), type(err).__name__)
+        if type(err).__name__ == "InsufficientPermissions":
+            # MA add-on: Home Assistant authenticates as a system user, which may neither mint a token for a person nor
+            # use its own token on the LAN webserver. Nothing the integration can do - the user pastes a token once.
+            _LOGGER.warning(
+                "Music Assistant nie pozwala integracji wystawić tokena dla zegara (dodatek MA widzi Home Assistant jako użytkownika systemowego). "
+                "Wejdź w Ustawienia → Urządzenia i usługi → Helios → Konfiguruj i wklej token Music Assistant (Music Assistant → Ustawienia → Tokeny)."
+            )
+        else:
+            _LOGGER.warning("Nie udało się utworzyć tokena MA dla %s: %s", _label(installation_id), type(err).__name__)
         if sent:
             await _revoke_by_name(hass, url, token, name, user_id)  # bounded (MA_TIMEOUT_SECONDS), safe after a delivered cancel
         if isinstance(err, asyncio.CancelledError):
@@ -174,9 +194,17 @@ async def _revoke_by_name(hass: HomeAssistant, url: str, token: str, name: str, 
         pass
 
 
+def quiet_music_source(hass: HomeAssistant) -> tuple[str, str] | None:
+    """music_source without the warning: with a pasted token the core entry is only a source of the address."""
+    for entry in hass.config_entries.async_entries("music_assistant"):
+        if entry.state is ConfigEntryState.LOADED and entry.data.get("url"):
+            return entry.data["url"], entry.data.get("token") or ""
+    return None
+
+
 async def async_revoke_music_section(hass: HomeAssistant, section: dict | None) -> None:
-    """logout() with the clock's own token revokes exactly that token; best effort."""
-    if not section or not section.get("token"):
+    """logout() with the clock's own token revokes exactly that token; best effort. A token the user pasted is never revoked."""
+    if not section or not section.get("token") or section.get("manual"):
         return
     try:
         async with asyncio.timeout(MA_TIMEOUT_SECONDS), _client(hass, section["url"], section["token"]) as client:

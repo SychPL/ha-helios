@@ -54,7 +54,7 @@ async def test_music_section_is_minted_on_connect_when_ma_appears(hass, hass_ws_
     entry, token = await paired(hass)
     monkeypatch.setattr(identity, "music_source", lambda hass: ("http://ma:8095", "ma-token"))
 
-    async def fake_create(hass, installation_id):
+    async def fake_create(hass, installation_id, options=None):
         return {"url": "http://ma:8095", "token": "clock-token"}
 
     monkeypatch.setattr(identity, "async_create_music_section", fake_create)
@@ -96,7 +96,7 @@ async def test_failed_section_save_keeps_the_old_token_and_revokes_only_the_new_
     async def fake_revoke(hass, section):
         revoked.append(section)
 
-    async def fake_create(hass, installation_id):
+    async def fake_create(hass, installation_id, options=None):
         return {"url": "http://new:8095", "token": "new-clock-token"}
 
     def failing_update(entry_, **kwargs):
@@ -122,7 +122,7 @@ async def test_a_section_from_0_8_0_is_refreshed_once(hass, hass_ws_client, monk
     async def fake_revoke(hass, section):
         revoked.append(section)
 
-    async def fake_create(hass, installation_id):
+    async def fake_create(hass, installation_id, options=None):
         return {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "new-clock-token", "minted": 2}
 
     monkeypatch.setattr(identity, "async_revoke_music_section", fake_revoke)
@@ -168,7 +168,7 @@ async def test_ma_server_change_revokes_the_old_token_and_mints_a_new_one(hass, 
     async def fake_revoke(hass, section):
         revoked.append(section)
 
-    async def fake_create(hass, installation_id):
+    async def fake_create(hass, installation_id, options=None):
         created.append(installation_id)
         return {"url": "http://new:8095", "token": "new-clock-token"}
 
@@ -198,3 +198,24 @@ async def test_connect_rechecks_the_owner_after_waiting_for_the_lock(hass, hass_
     lock.release()
     result = await ws.receive_json()
     assert result["success"] is False and result["error"]["code"] == "unauthorized"
+
+
+async def test_changing_the_pasted_token_refreshes_the_section_on_connect(hass, hass_ws_client, monkeypatch):
+    entry, token = await paired(hass)
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, "music_assistant": {"url": "http://ma:8095", "source_url": "http://ma:8094", "token": "old-paste", "minted": 2, "manual": True}},
+        options={**entry.options, "music_token": "new-paste"},
+    )
+    monkeypatch.setattr(identity, "quiet_music_source", lambda hass: ("http://ma:8094", ""))
+    seen = []
+
+    async def fake_create(hass, installation_id, options=None):
+        seen.append(options)
+        return {"url": "http://ma:8095", "source_url": "http://ma:8094", "token": "new-paste", "minted": 2, "manual": True}
+
+    monkeypatch.setattr(identity, "async_create_music_section", fake_create)
+    ws = await hass_ws_client(hass, access_token=token)
+    _, events = await connect(ws)
+    assert seen == [{"music_token": "new-paste"}], "the options reach the section builder"
+    assert events[2]["music_assistant"]["token"] == "new-paste"
