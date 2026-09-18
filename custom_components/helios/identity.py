@@ -63,6 +63,26 @@ def music_source(hass: HomeAssistant) -> tuple[str, str] | None:
     return entry.data["url"], entry.data["token"]
 
 
+async def async_public_music_url(hass: HomeAssistant, url: str) -> str:
+    """The address the clock can reach (SPEC 0.10 pkt 6.1).
+
+    The core entry of an add-on install stores the supervisor-internal hostname (http://<slug>:8094), which no device on
+    the LAN can resolve; the server itself knows its LAN address, so ask it and fall back to the stored url.
+    """
+    try:
+        from music_assistant_client.auth_helpers import get_server_info  # noqa: PLC0415
+
+        async with asyncio.timeout(MA_TIMEOUT_SECONDS):
+            info = await get_server_info(url, aiohttp_session=async_get_clientsession(hass))
+        public = getattr(info, "base_url", None) or getattr(info, "internal_url", None)
+        if public:
+            return str(public).rstrip("/")
+        _LOGGER.warning("Music Assistant nie podał swojego adresu - zegar dostanie %s", url)
+    except Exception as err:  # noqa: BLE001 - the stored url is the fallback
+        _LOGGER.warning("Nie udało się odczytać adresu Music Assistant (%s): %s", url, type(err).__name__)
+    return url
+
+
 def _client(hass: HomeAssistant, url: str, token: str):
     from music_assistant_client import MusicAssistantClient  # noqa: PLC0415 - optional: installed through after_dependencies
 
@@ -75,13 +95,14 @@ async def async_create_music_section(hass: HomeAssistant, installation_id: str) 
     if source is None:
         return None
     url, token = source
+    public = await async_public_music_url(hass, url)  # the clock talks to this one, HA keeps using the entry's url
     name = f"{_label(installation_id)} {secrets.token_hex(3)}"
     sent = False
     try:
         async with asyncio.timeout(MA_TIMEOUT_SECONDS), _client(hass, url, token) as client:
             sent = True  # from here on the server may have acted even if we never see the answer
             clock_token = await client.auth.create_token(name)
-        return {"url": url, "token": clock_token}
+        return {"url": public, "source_url": url, "token": clock_token}
     except ImportError:
         _LOGGER.warning("music_assistant_client nie jest zainstalowany - zegar bez muzyki")
     except (Exception, asyncio.CancelledError) as err:  # CancelledError: the pairing transaction timed out around us
@@ -128,5 +149,6 @@ def connection_payload(hass: HomeAssistant, entry_data: dict, options: dict) -> 
     section = entry_data.get("music_assistant")
     music = None
     if section:
-        music = {"url": section["url"], "token": section["token"], "sendspin_url": options.get("sendspin_url") or sendspin_url_for(section["url"])}
+        url = (options.get("music_url") or section["url"]).rstrip("/")  # the option wins when the server reports an address the clock cannot use
+        music = {"url": url, "token": section["token"], "sendspin_url": options.get("sendspin_url") or sendspin_url_for(url)}
     return {"type": "connection", "pipeline": preferred_pipeline(hass), "dashboard_path": DASHBOARD_PATH, "music_assistant": music, "diagnostics_url": options.get("diagnostics_url") or None}

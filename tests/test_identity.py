@@ -127,13 +127,47 @@ async def test_music_section_is_created_and_revoked_through_the_ma_client(hass, 
             return False
 
     monkeypatch.setattr(identity, "_client", lambda hass, url, token: FakeClient(url, None, token))
-    monkeypatch.setattr(identity, "music_source", lambda hass: ("http://ma:8095", "ma-token"))
+    monkeypatch.setattr(identity, "music_source", lambda hass: ("http://d5369777-music-assistant:8094", "ma-token"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
     section = await identity.async_create_music_section(hass, INSTALLATION)
-    assert section == {"url": "http://ma:8095", "token": "clock-token"}
+    # the clock gets the address the server reports, HA keeps the entry url for its own calls (SPEC 0.10 pkt 6.1)
+    assert section == {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "clock-token"}
     assert created[0][0] == "ma-token" and created[0][1].startswith("Helios 0f3c1b2a ") and len(created[0][1].split()[-1]) == 6
     await identity.async_revoke_music_section(hass, section)
     assert revoked == ["clock-token"]
     await identity.async_revoke_music_section(hass, None)
+
+
+async def _url(value):
+    return value
+
+
+async def test_public_music_url_prefers_what_the_server_reports(hass, monkeypatch):
+    from types import SimpleNamespace
+
+    async def info(url, aiohttp_session=None, ssl_context=None):
+        return SimpleNamespace(base_url="http://192.168.1.212:8095/", internal_url="http://x", external_url=None)
+
+    import music_assistant_client.auth_helpers as helpers
+
+    monkeypatch.setattr(helpers, "get_server_info", info)
+    assert await identity.async_public_music_url(hass, "http://d5369777-music-assistant:8094") == "http://192.168.1.212:8095"
+
+    async def broken(url, aiohttp_session=None, ssl_context=None):
+        raise OSError("down")
+
+    monkeypatch.setattr(helpers, "get_server_info", broken)
+    assert await identity.async_public_music_url(hass, "http://ma:8095") == "http://ma:8095", "the stored url is the fallback"
+
+
+async def test_connection_payload_honours_the_music_url_override(hass):
+    data = {"installation_id": INSTALLATION, "music_assistant": {"url": "http://d5369777-music-assistant:8094", "source_url": "http://d5369777-music-assistant:8094", "token": "clock-token"}}
+    auto = identity.connection_payload(hass, data, {})
+    assert auto["music_assistant"]["url"] == "http://d5369777-music-assistant:8094"
+    assert auto["music_assistant"]["sendspin_url"] == "ws://d5369777-music-assistant:8927/sendspin"
+    override = identity.connection_payload(hass, data, {"music_url": "http://192.168.1.212:8095/"})
+    assert override["music_assistant"]["url"] == "http://192.168.1.212:8095"
+    assert override["music_assistant"]["sendspin_url"] == "ws://192.168.1.212:8927/sendspin"
 
 
 async def test_music_section_is_none_without_ma_or_on_errors(hass, monkeypatch):

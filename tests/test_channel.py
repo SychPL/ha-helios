@@ -111,6 +111,32 @@ async def test_failed_section_save_keeps_the_old_token_and_revokes_only_the_new_
     assert revoked == [{"url": "http://new:8095", "token": "new-clock-token"}], "the old token is never revoked before the new section is persisted"
 
 
+async def test_a_section_from_0_8_0_is_refreshed_once(hass, hass_ws_client, monkeypatch):
+    """0.8.0 stored the supervisor-internal address and no source_url: the next connect must mint a clock-facing section (SPEC 0.10 pkt 6.1)."""
+    entry, token = await paired(hass)
+    old = {"url": "http://d5369777-music-assistant:8094", "token": "old-clock-token"}  # no source_url
+    hass.config_entries.async_update_entry(entry, data={**entry.data, "music_assistant": old})
+    monkeypatch.setattr(identity, "music_source", lambda hass: ("http://d5369777-music-assistant:8094", "ma-token"))
+    revoked = []
+
+    async def fake_revoke(hass, section):
+        revoked.append(section)
+
+    async def fake_create(hass, installation_id):
+        return {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "new-clock-token"}
+
+    monkeypatch.setattr(identity, "async_revoke_music_section", fake_revoke)
+    monkeypatch.setattr(identity, "async_create_music_section", fake_create)
+    ws = await hass_ws_client(hass, access_token=token)
+    _, events = await connect(ws)
+    assert events[2]["music_assistant"] == {"url": "http://192.168.1.212:8095", "token": "new-clock-token", "sendspin_url": "ws://192.168.1.212:8927/sendspin"}
+    assert revoked == [old], "the internal-address token is revoked after the new section is stored"
+    ws2 = await hass_ws_client(hass, access_token=token)
+    revoked.clear()
+    _, events = await connect(ws2, msg_id=2)
+    assert revoked == [], "a section with a matching source_url is not refreshed again"
+
+
 async def test_ma_removed_from_ha_drops_the_section(hass, hass_ws_client, monkeypatch):
     entry, token = await paired(hass)
     hass.config_entries.async_update_entry(entry, data={**entry.data, "music_assistant": {"url": "http://old:8095", "token": "old-clock-token"}})

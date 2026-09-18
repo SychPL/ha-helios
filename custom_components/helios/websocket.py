@@ -61,7 +61,8 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
         return
     section = entry.data.get("music_assistant")
     source = identity.music_source(hass)
-    stale = section is not None and (source is None or section["url"] != source[0])  # MA gone or moved: the stored section is dead
+    # a section from 0.8.0 has no source_url: it holds the supervisor-internal address, so refresh it once (SPEC 0.10 pkt 6.1)
+    stale = section is not None and (source is None or section.get("source_url") != source[0])
     missing = section is None and source is not None
     if stale or missing:
         lock = data["locks"].setdefault(installation_id, asyncio.Lock())

@@ -128,6 +128,9 @@ class HeliosOptionsFlow(OptionsFlow):
             self._draft = user_input
             if user_input["background"] == "upload":
                 return await self.async_step_upload()
+            music = (user_input.get("music_url") or "").strip()
+            if music and not music.startswith(("http://", "https://")):
+                errors["music_url"] = "invalid_url"
             sendspin = (user_input.get("sendspin_url") or "").strip()
             diagnostics = (user_input.get("diagnostics_url") or "").strip()
             if sendspin and not sendspin.startswith(("ws://", "wss://")):
@@ -158,6 +161,7 @@ class HeliosOptionsFlow(OptionsFlow):
                 vol.Required("focus_y", default=background.get("focus_y", 50)): NumberSelector(
                     NumberSelectorConfig(min=0, max=100, step=1, mode=NumberSelectorMode.SLIDER, unit_of_measurement="%")
                 ),
+                vol.Optional("music_url", default=self.config_entry.options.get("music_url", "")): str,  # SPEC 0.10 pkt 6.1: empty = the address Music Assistant reports
                 vol.Optional("sendspin_url", default=self.config_entry.options.get("sendspin_url", "")): str,  # SPEC 0.10 pkt 6.2: empty = derived from the MA url
                 vol.Optional("diagnostics_url", default=self.config_entry.options.get("diagnostics_url", "")): str,  # empty = no diagnostics sink
             }
@@ -193,6 +197,7 @@ class HeliosOptionsFlow(OptionsFlow):
                 await self.hass.async_add_executor_job(ap.write_image, self._dir(), new_id, data)
                 options["image_id"] = new_id
             draft = self._draft or {}
+            options["music_url"] = (draft.get("music_url") or "").strip()
             options["sendspin_url"] = (draft.get("sendspin_url") or "").strip()
             options["diagnostics_url"] = (draft.get("diagnostics_url") or "").strip()
             solid = draft.get("background", "solid") == "solid"

@@ -25,7 +25,8 @@
           "focus_x": "Punkt kadru w poziomie",
           "focus_y": "Punkt kadru w pionie",
           "sendspin_url": "Adres Sendspin (puste = wyliczony z adresu Music Assistant)",
-          "diagnostics_url": "Adres diagnostyki (puste = brak)"
+          "diagnostics_url": "Adres diagnostyki (puste = brak)",
+          "music_url": "Adres Music Assistant dla zegara (puste = adres zgłoszony przez serwer)"
         }
       },
       "upload": {
@@ -43,7 +44,7 @@
       "animated_image": "Animowane obrazy nie są obsługiwane.",
       "image_too_large": "Obraz ma za dużo pikseli (maks. 24 mln, 8192 na bok).",
       "corrupt_image": "Nie udało się odczytać obrazu.",
-      "invalid_url": "Adres Sendspin musi zaczynać się od ws:// lub wss://, adres diagnostyki od http:// lub https://."
+      "invalid_url": "Adres Music Assistant musi zaczynać się od http:// lub https://, adres Sendspin od ws:// lub wss://, adres diagnostyki od http:// lub https://."
     }
   },
   "selector": {
