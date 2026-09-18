@@ -170,6 +170,79 @@ async def test_connection_payload_honours_the_music_url_override(hass):
     assert override["music_assistant"]["sendspin_url"] == "ws://192.168.1.212:8927/sendspin"
 
 
+class _FakeAuth:
+    """Mirrors the pieces of music_assistant_client 1.4.3 the integration uses."""
+
+    def __init__(self, log, users, refuse_token=None, token="clock-token"):
+        self.log, self.users, self.refuse_token, self.token = log, users, refuse_token, token
+        self.tokens = []
+
+    async def list_users(self):
+        if self.users is None:
+            raise RuntimeError("not an admin")
+        return self.users
+
+    async def create_token(self, name, user_id=None):
+        self.log.append(("create", name, user_id))
+        self.tokens.append(SimpleNamespace(token_id="t1", name=name))
+        return self.token
+
+    async def get_tokens(self, user_id=None):
+        return list(self.tokens)
+
+    async def revoke_token(self, token_id):
+        self.log.append(("revoke_token", token_id))
+
+    async def get_current_user(self):
+        if self.refuse_token:
+            raise self.refuse_token
+        return SimpleNamespace(username="mateusz")
+
+    async def logout(self):
+        self.log.append(("logout", self.token))
+
+
+def _fake_client(log, users, refuse_token=None):
+    class Client:
+        def __init__(self, url, token):
+            self.url, self.auth = url, _FakeAuth(log, users, refuse_token)
+
+        async def __aenter__(self):
+            log.append(("connect", self.url))
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    return lambda hass, url, token: Client(url, token)
+
+
+async def test_the_clock_token_is_minted_for_a_regular_user_not_the_ha_system_user(hass, monkeypatch):
+    """MA refuses Home Assistant system-user tokens on its LAN webserver, so the token must belong to a person (MA 2.10.3)."""
+    log = []
+    users = [SimpleNamespace(user_id="sys", role="system"), SimpleNamespace(user_id="u-mateusz", role="admin")]
+    monkeypatch.setattr(identity, "music_source", lambda hass: ("http://d5369777-music-assistant:8094", "ma-token"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
+    monkeypatch.setattr(identity, "_client", _fake_client(log, users))
+    section = await identity.async_create_music_section(hass, INSTALLATION)
+    assert section["url"] == "http://192.168.1.212:8095" and section["token"] == "clock-token"
+    assert ("create", section and log[1][1], "u-mateusz") in log, log
+    assert ("connect", "http://192.168.1.212:8095") in log, "the token is verified from the clock's address"
+
+
+async def test_a_refused_token_is_revoked_and_leaves_no_section(hass, monkeypatch, caplog):
+    from music_assistant_models.errors import AuthenticationFailed
+
+    log = []
+    monkeypatch.setattr(identity, "music_source", lambda hass: ("http://ma:8094", "ma-token"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
+    monkeypatch.setattr(identity, "_client", _fake_client(log, None, AuthenticationFailed("Home Assistant system user not allowed on regular webserver")))
+    assert await identity.async_create_music_section(hass, INSTALLATION) is None
+    assert ("create", log[1][1], None) in log, "no user list: mint for whoever we are"
+    assert any(step[0] == "logout" for step in log), "a token the clock cannot use is revoked"
+    assert "odrzuca token zegara" in caplog.text
+
+
 async def test_music_section_is_none_without_ma_or_on_errors(hass, monkeypatch):
     assert await identity.async_create_music_section(hass, INSTALLATION) is None
     monkeypatch.setattr(identity, "music_source", lambda hass: ("http://ma:8095", "ma-token"))

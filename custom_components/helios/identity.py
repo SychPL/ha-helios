@@ -89,6 +89,28 @@ def _client(hass: HomeAssistant, url: str, token: str):
     return MusicAssistantClient(url, async_get_clientsession(hass), token)  # TLS verified like everywhere else (SPEC 0.10 pkt 9)
 
 
+def _is_system(user) -> bool:
+    return "system" in str(getattr(user, "role", "")).lower()
+
+
+async def _clock_user(client) -> str | None:
+    """A regular MA account for the clock's token.
+
+    An add-on install authenticates as MA's Home Assistant system user, and MA refuses system-user tokens on its LAN
+    webserver ("Home Assistant system user not allowed on regular webserver", MA 2.10.3), so the token has to be minted
+    for a real user. None = mint for whoever we are (a non add-on install already authenticates as a person).
+    """
+    try:
+        users = [u for u in await client.auth.list_users() if not _is_system(u)]
+    except Exception as err:  # noqa: BLE001 - not an admin, or an MA without user management
+        _LOGGER.debug("Nie udało się pobrać użytkowników MA: %s", type(err).__name__)
+        return None
+    if not users:
+        return None
+    chosen = next((u for u in users if "admin" in str(getattr(u, "role", "")).lower()), users[0])
+    return getattr(chosen, "user_id", None)
+
+
 async def async_create_music_section(hass: HomeAssistant, installation_id: str) -> dict | None:
     """A clock-specific MA token minted with the core integration's token; None (with one warning) when MA is absent or fails."""
     source = music_source(hass)
@@ -98,27 +120,54 @@ async def async_create_music_section(hass: HomeAssistant, installation_id: str) 
     public = await async_public_music_url(hass, url)  # the clock talks to this one, HA keeps using the entry's url
     name = f"{_label(installation_id)} {secrets.token_hex(3)}"
     sent = False
+    user_id = None
     try:
         async with asyncio.timeout(MA_TIMEOUT_SECONDS), _client(hass, url, token) as client:
+            user_id = await _clock_user(client)
             sent = True  # from here on the server may have acted even if we never see the answer
-            clock_token = await client.auth.create_token(name)
-        return {"url": public, "source_url": url, "token": clock_token}
+            clock_token = await client.auth.create_token(name, user_id=user_id) if user_id else await client.auth.create_token(name)
     except ImportError:
         _LOGGER.warning("music_assistant_client nie jest zainstalowany - zegar bez muzyki")
+        return None
     except (Exception, asyncio.CancelledError) as err:  # CancelledError: the pairing transaction timed out around us
         _LOGGER.warning("Nie udało się utworzyć tokena MA dla %s: %s", _label(installation_id), type(err).__name__)
         if sent:
-            await _revoke_by_name(hass, url, token, name)  # bounded (MA_TIMEOUT_SECONDS), safe after a delivered cancel
+            await _revoke_by_name(hass, url, token, name, user_id)  # bounded (MA_TIMEOUT_SECONDS), safe after a delivered cancel
         if isinstance(err, asyncio.CancelledError):
             raise
+        return None
+    section = {"url": public, "source_url": url, "token": clock_token}
+    refused = await _token_refused(hass, section)
+    if refused:
+        _LOGGER.warning("Music Assistant odrzuca token zegara pod adresem %s (%s) - zegar bez muzyki", public, refused)
+        await async_revoke_music_section(hass, section)
+        return None
+    return section
+
+
+async def _token_refused(hass: HomeAssistant, section: dict) -> str | None:
+    """Connects to the clock's address exactly as the clock will; returns a reason only when MA rejects the token itself.
+
+    A connection error says nothing about the clock (HA may simply not reach that address), so the section survives it.
+    """
+    from music_assistant_models.errors import AuthenticationFailed, AuthenticationRequired, InvalidToken  # noqa: PLC0415
+
+    try:
+        async with asyncio.timeout(MA_TIMEOUT_SECONDS), _client(hass, section["url"], section["token"]) as client:
+            await client.auth.get_current_user()
+    except (AuthenticationFailed, AuthenticationRequired, InvalidToken) as err:
+        return str(err)[:120]
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Nie udało się sprawdzić tokena MA pod %s: %s", section["url"], type(err).__name__)
     return None
 
 
-async def _revoke_by_name(hass: HomeAssistant, url: str, token: str, name: str) -> None:
+async def _revoke_by_name(hass: HomeAssistant, url: str, token: str, name: str, user_id: str | None = None) -> None:
     """After an ambiguous create_token (timeout after the server acted) the token of this attempt is found by its unique name and revoked."""
     try:
         async with asyncio.timeout(MA_TIMEOUT_SECONDS), _client(hass, url, token) as client:
-            for item in await client.auth.get_tokens():
+            items = await client.auth.get_tokens(user_id) if user_id else await client.auth.get_tokens()
+            for item in items:
                 if item.name == name:
                     await client.auth.revoke_token(item.token_id)
     except Exception:  # noqa: BLE001
