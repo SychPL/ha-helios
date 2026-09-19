@@ -18,7 +18,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class HeliosLamp(HeliosEntity, LightEntity):
-    _attr_name = "Lampka docka"
+    _attr_translation_key = "dock_lamp"
     _attr_color_mode = ColorMode.BRIGHTNESS
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
     _attr_icon = "mdi:lamp"

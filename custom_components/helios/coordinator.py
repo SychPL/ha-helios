@@ -110,7 +110,7 @@ class HeliosCoordinator(DataUpdateCoordinator[dict]):
     async def async_command(self, command: str, args: dict) -> None:
         """One command on the active subscription; timeout means unknown outcome and nothing is retried."""
         if self.connection is None:
-            raise HomeAssistantError("Helios jest offline")
+            raise HomeAssistantError("Helios is offline")
         request_id = uuid4().hex
         future: asyncio.Future = self.hass.loop.create_future()
         self._pending[request_id] = future
@@ -118,11 +118,11 @@ class HeliosCoordinator(DataUpdateCoordinator[dict]):
             self.connection.send_event(self.sub_id, {"type": "command", "request_id": request_id, "command": command, "args": args})
             result = await asyncio.wait_for(future, COMMAND_TIMEOUT_SECONDS)
         except TimeoutError as err:
-            raise HomeAssistantError("Helios nie potwierdził polecenia w czasie 10 s") from err
+            raise HomeAssistantError("Helios did not confirm the command within 10 s") from err
         finally:
             self._pending.pop(request_id, None)
         if result["status"] != "ok":
-            raise HomeAssistantError(f"Helios odrzucił polecenie: {result['status']} {result.get('code') or ''}".strip())
+            raise HomeAssistantError(f"Helios refused the command: {result['status']} {result.get('code') or ''}".strip())
 
     def _fail_pending(self, reason: str) -> None:
         for future in self._pending.values():

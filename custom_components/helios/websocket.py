@@ -47,7 +47,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
     data = hass.data[DOMAIN]
     installation_id = msg["installation_id"]
     if msg["protocol"] not in PROTOCOLS:
-        connection.send_error(msg["id"], "unsupported_protocol", f"Helios obsługuje protokół {PROTOCOL}")
+        connection.send_error(msg["id"], "unsupported_protocol", f"Helios speaks protocol {PROTOCOL}")
         return
 
     def owned():
@@ -57,7 +57,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
 
     entry = owned()
     if entry is None:
-        connection.send_error(msg["id"], "unauthorized", "Nieznane urządzenie albo sparowane z innym użytkownikiem - sparuj kodem")
+        connection.send_error(msg["id"], "unauthorized", "Unknown device, or paired with a different user - pair it again with a code")
         return
     section = entry.data.get("music_assistant")
     manual = (entry.options.get("music_token") or "").strip()
@@ -77,7 +77,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
             async with lock:  # the same lock the pairing transaction holds through its steps 3-5
                 entry = owned()
                 if entry is None:
-                    connection.send_error(msg["id"], "unauthorized", "To urządzenie zostało sparowane ponownie")
+                    connection.send_error(msg["id"], "unauthorized", "This device has been paired again")
                     return
                 if entry.data.get("music_assistant") != section:
                     section = entry.data.get("music_assistant")  # another connect already did the work
@@ -106,10 +106,10 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
     # directly before attach, after the last await: a re-pair or reload meanwhile replaces both the entry data and the coordinator
     entry = owned()
     if entry is None:
-        connection.send_error(msg["id"], "unauthorized", "To urządzenie zostało sparowane ponownie")
+        connection.send_error(msg["id"], "unauthorized", "This device has been paired again")
         return
     if coordinator is None or data["entries"].get(entry.entry_id) is not coordinator:
-        connection.send_error(msg["id"], "not_ready", "Integracja Helios jeszcze się ładuje")
+        connection.send_error(msg["id"], "not_ready", "The Helios integration is still loading")
         return
     sub_id = msg["id"]
     coordinator.attach(connection, sub_id)
@@ -148,7 +148,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
 def ws_state(hass: HomeAssistant, connection, msg: dict) -> None:
     coordinator = _coordinator_for_connection(hass, connection)
     if coordinator is None:
-        connection.send_error(msg["id"], "unauthorized", "Brak aktywnej subskrypcji helios/connect")
+        connection.send_error(msg["id"], "unauthorized", "No active helios/connect subscription")
         return
     coordinator.set_state(msg["state"])
     connection.send_result(msg["id"])
@@ -161,7 +161,7 @@ def ws_state(hass: HomeAssistant, connection, msg: dict) -> None:
 def ws_result(hass: HomeAssistant, connection, msg: dict) -> None:
     coordinator = _coordinator_for_connection(hass, connection)
     if coordinator is None:
-        connection.send_error(msg["id"], "unauthorized", "Brak aktywnej subskrypcji helios/connect")
+        connection.send_error(msg["id"], "unauthorized", "No active helios/connect subscription")
         return
     coordinator.resolve(msg["request_id"], msg["status"], msg.get("code"))
     connection.send_result(msg["id"])

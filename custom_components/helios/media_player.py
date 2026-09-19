@@ -1,4 +1,4 @@
-"""The clock as a media_player: its own output volume plus play/pause/stop of the local music session, so Assist intents ("głośniej", "wyłącz muzykę") can target it by area."""
+"""The clock as a media_player: its own output volume plus play/pause/stop of the local music session, so Assist media intents ("turn off the music", Polish "wyłącz muzykę") can target it by area."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class HeliosSpeaker(HeliosEntity, MediaPlayerEntity):
     """Device volume plus transport of the clock's local session (0.8.7+). Not a music source: Music Assistant exposes its own player for browsing."""
 
-    _attr_name = "Głośnik zegara"
+    _attr_translation_key = "clock_speaker"
     _attr_device_class = MediaPlayerDeviceClass.SPEAKER
     _attr_supported_features = (
         MediaPlayerEntityFeature.VOLUME_SET
@@ -57,7 +57,7 @@ class HeliosSpeaker(HeliosEntity, MediaPlayerEntity):
         await self.coordinator.async_command("music.stop", {})
 
     async def async_turn_off(self) -> None:
-        """"Wyłącz muzykę" lands here through the Assist media intents: stop the local session, the clock itself stays on."""
+        """A "turn off the music" intent lands here through the Assist media intents: stop the local session, the clock itself stays on."""
         await self.coordinator.async_command("music.stop", {})
 
     @property

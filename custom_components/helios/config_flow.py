@@ -20,6 +20,9 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from . import appearance as ap
@@ -161,7 +164,9 @@ class HeliosOptionsFlow(OptionsFlow):
                 vol.Required("focus_y", default=background.get("focus_y", 50)): NumberSelector(
                     NumberSelectorConfig(min=0, max=100, step=1, mode=NumberSelectorMode.SLIDER, unit_of_measurement="%")
                 ),
-                vol.Optional("music_token", default=self.config_entry.options.get("music_token", "")): str,  # SPEC 0.10 pkt 6.2: empty = the integration mints one (an MA add-on does not allow that)
+                vol.Optional("music_token", default=self.config_entry.options.get("music_token", "")): TextSelector(  # SPEC 0.10 pkt 6.2: empty = the integration mints one (an MA add-on does not allow that)
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
                 vol.Optional("music_url", default=self.config_entry.options.get("music_url", "")): str,  # SPEC 0.10 pkt 6.1: empty = the address Music Assistant reports
                 vol.Optional("sendspin_url", default=self.config_entry.options.get("sendspin_url", "")): str,  # SPEC 0.10 pkt 6.2: empty = derived from the MA url
                 vol.Optional("diagnostics_url", default=self.config_entry.options.get("diagnostics_url", "")): str,  # empty = no diagnostics sink

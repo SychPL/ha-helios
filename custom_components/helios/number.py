@@ -16,7 +16,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class HeliosVolume(HeliosEntity, NumberEntity):
-    _attr_name = "Głośność urządzenia"
+    _attr_translation_key = "device_volume"
     _attr_native_min_value = 0
     _attr_native_max_value = 100
     _attr_native_step = 1

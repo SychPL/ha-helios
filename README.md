@@ -1,54 +1,126 @@
-# Helios - integracja Home Assistant dla Lenovo Smart Clock 2
+# Helios - Home Assistant integration for the Lenovo Smart Clock 2
 
-Integracja dla zegara z aplikacją [Helios](https://github.com/SychPL/helios) (Lenovo Smart Clock 2 jako dashboard i satelita głosowy Home Assistant). Zegar łączy się z HA własnym gniazdem WebSocket; ta integracja rejestruje urządzenie i encje po stronie HA. Bez zależności pip, wyłącznie push (`iot_class: local_push`).
+Home Assistant side of [Helios](https://github.com/SychPL/helios), an Android
+app that turns a Lenovo Smart Clock 2 into a Home Assistant dashboard and voice
+satellite. The clock connects to Home Assistant over its own WebSocket
+connection; this integration registers the device and its entities, pairs the
+clock with a six-digit code and hands it everything it needs to run.
 
-## Co daje
+No pip dependencies, push only (`iot_class: local_push`).
 
-| Encja | Źródło |
+## What you get
+
+| Entity | Source on the clock |
 | --- | --- |
-| `sensor` Wersja aplikacji (diagnostyczny) | wersja APK Heliosa |
-| `sensor` Stan głosu | idle / listening / processing / responding / error |
-| `sensor` Wersja docka (diagnostyczny) | firmware docka ładującego |
-| `binary_sensor` Dock podłączony | listener OEM docka |
-| `binary_sensor` Ładowanie telefonu | listener ładowania Qi; niedostępny bez docka |
-| `light` Lampka docka | on/off z odczytu OEM, jasność 1-10 jako nastawa |
-| `number` Głośność urządzenia | `STREAM_MUSIC` 0-100 %, odczyt co 3 s |
-| `media_player` Głośnik zegara | ta sama głośność urządzenia jako odtwarzacz (tylko `volume_set`/`volume_step`), żeby Assist rozumiał "głośniej"/"ustaw głośność" w obszarze zegara; muzykę obsługuje osobny odtwarzacz Music Assistant |
+| `sensor` App version (diagnostic) | the Helios APK version |
+| `sensor` Voice state | idle / listening / processing / responding / error |
+| `sensor` Dock version (diagnostic) | firmware of the charging dock |
+| `binary_sensor` Dock connected | the OEM dock listener |
+| `binary_sensor` Phone charging | Qi charging listener; unavailable without a dock |
+| `light` Dock lamp | on/off read from the OEM service, brightness 1-10 |
+| `number` Device volume | `STREAM_MUSIC` 0-100 %, polled every 3 s |
+| `media_player` Clock speaker | the same device volume as a player (`volume_set` / `volume_step` only), so Assist understands "louder" in the clock's area; music itself is a separate Music Assistant player |
 
-Urządzenie w rejestrze HA ma stały identyfikator instalacji Heliosa, więc obszar przypisany w HA daje kontekst pokoju dla poleceń głosowych (`device_id` w `assist_pipeline/run`).
+The device carries the clock's stable installation id, so the area you assign in
+Home Assistant becomes the room context of every voice command (the `device_id`
+passed to `assist_pipeline/run`).
 
-## Instalacja
+## Install
 
-1. HACS → Integracje → menu ⋮ → **Niestandardowe repozytoria** → dodaj URL tego repozytorium, kategoria *Integracja*.
-2. Zainstaluj **Helios** i zrestartuj Home Assistant.
-3. Na zegarze (Helios 0.9.0 lub nowszy): przytrzymaj HELIOS → **Paruj z HA** → wybierz swój Home Assistant z listy (mDNS) albo wpisz adres.
-4. Ustawienia → Urządzenia i usługi → **Dodaj integrację** → Helios. HA pokaże 6-cyfrowy kod ważny 5 minut; zostaw to okno otwarte.
-5. Na zegarze dotknij **Dalej** i wpisz kod → OK. Zegar dostaje własny token HA (bez wklejania czegokolwiek), a jeśli w HA jest integracja Music Assistant, także dostęp do muzyki.
-6. Przypisz urządzenie do obszaru.
+1. HACS -> Integrations -> three-dot menu -> **Custom repositories** -> add this
+   repository's URL, category *Integration*.
+2. Install **Helios** and restart Home Assistant.
+3. On the clock (Helios 0.9.0 or newer): hold HELIOS -> **Paruj z HA** (Pair
+   with HA) -> pick your Home Assistant from the mDNS list or type its address.
+4. Settings -> Devices and services -> **Add integration** -> Helios. Home
+   Assistant shows a six-digit code valid for five minutes. Leave that dialog
+   open - it is what finishes the pairing.
+5. On the clock tap **Dalej** (Next) and type the code. The clock receives its
+   own Home Assistant token, and if the Music Assistant integration is present,
+   music access too.
+6. Assign the device to an area.
 
-Ponowne parowanie tego samego zegara odświeża istniejący wpis (nowy token, stary unieważniony). Usunięcie integracji usuwa użytkownika HA zegara i jego token Music Assistant; zegar przestaje przekazywać `device_id` i prosi o ponowne parowanie. Zegary z Heliosem 0.8.x (parowane przez WebSocket z tokenem administratora) działają dalej do czasu ponownego parowania kodem po aktualizacji aplikacji.
+Pairing the same clock again refreshes the existing entry: a new user and token,
+and the old ones are removed only once the new pairing succeeded.
 
-## Zachowanie i bezpieczeństwo
+## Security model
 
-- Encje są niedostępne, dopóki zegar nie prześle pierwszego snapshotu; rozłączenie gniazda oznacza je jako `unavailable` bez dodatkowych heartbeatów.
-- Polecenia (`lamp.turn_on`, `lamp.turn_off`, `lamp.set_brightness`, `audio.set_device_volume`) to zamknięta lista; HA czeka na potwierdzenie do 10 s i nigdy nie ponawia.
-- Każdy zegar ma własnego użytkownika systemowego HA (bez uprawnień administratora, tylko z sieci lokalnej) i token ważny 10 lat, tworzone przy parowaniu i usuwane razem z wpisem. Kanał przyjmuje tylko połączenia tego użytkownika.
-- Parowanie idzie przez nieuwierzytelniony `POST /api/helios/pair` w sieci lokalnej: kod 6 cyfr ważny 5 minut, po 5 błędnych próbach z jednego adresu ten adres jest blokowany na 5 minut, odpowiedzi błędów nie zdradzają niczego, kod i token nie trafiają do dziennika.
-- Music Assistant: integracja bierze adres i token z wpisu core `music_assistant`, tworzy dla zegara osobny token MA (widoczny na liście tokenów w MA) i podaje adres Sendspin (`ws://<host MA>:8927/sendspin`, do nadpisania w opcjach). Bez MA w HA zegar działa bez muzyki.
+This integration creates a Home Assistant user and mints a token from an
+endpoint that is **not authenticated**, so it is worth stating exactly what that
+means before you install it.
 
-## Rozwój
+- **What is created.** On a successful pairing the integration creates one Home
+  Assistant user per clock: system-generated, **not an administrator**,
+  `local_only` (it cannot be used from outside your LAN), in the plain users
+  group. Its token is a system token with a ten-year expiry. That token is the
+  only credential the clock ever holds; you never paste a long-lived admin token
+  into the device.
+- **Who may pair.** `POST /api/helios/pair` is unauthenticated because a clock
+  that has never been paired has no credential to authenticate with. It only
+  accepts a six-digit code that **you** generated in the Home Assistant UI
+  moments earlier and that is valid for five minutes. Five wrong codes from one
+  address block that address for five minutes. Error responses are uniform and
+  reveal nothing; neither the code nor the token is ever logged.
+- **What the clock can do with it.** The device channel accepts connections from
+  that user only, and the command allowlist is closed: `lamp.turn_on`,
+  `lamp.turn_off`, `lamp.set_brightness`, `audio.set_device_volume`. Home
+  Assistant waits up to 10 s for a confirmation and never retries.
+- **Removal cleans up.** Deleting the config entry deletes the clock's user, its
+  Music Assistant token and its stored background image. The clock notices,
+  stops reconnecting and asks to be paired again.
+- **Music Assistant credentials.** The integration reads the address and token
+  of the core `music_assistant` config entry in order to mint a separate token
+  for the clock (it shows up in Music Assistant's own token list). This is a
+  deliberate cross-integration read of another entry's data; if you would rather
+  it did not, leave Music Assistant out and the clock simply runs without music.
+  When Music Assistant runs as an add-on it refuses to mint a usable token at
+  all, and you paste one yourself in the options - see below.
 
-`pip install -r requirements_test.txt && python -m pytest tests` (Python 3.14, instaluje Home Assistant 2026.8.3 przez `pytest-homeassistant-custom-component`) uruchamia testy czystych helperów i testy komponentowe parowania, tożsamości i kanału. Workflow GitHub uruchamia hassfest, walidację HACS, te testy i kontrolę importu.
+## Protocol
 
-Protokół kanału (`helios/connect`, `helios/state`, `helios/result`) opisuje specyfikacja w repozytorium aplikacji: `docs/SPEC-0.7-home-assistant-integration.md`.
+The WebSocket channel (`helios/connect`, `helios/state`, `helios/result`), the
+pairing exchange (`GET`/`POST /api/helios/pair`) and the `connection` event are
+described in **[docs/PROTOCOL.md](docs/PROTOCOL.md)**.
 
-## Wygląd zegara (tło i motyw)
+## Behaviour
 
-Ustawienia → Urządzenia i usługi → Helios → wybrany zegar → **Konfiguruj**:
+- Entities stay unavailable until the clock sends its first snapshot;
+  a dropped socket marks them `unavailable` with no extra heartbeats.
+- Commands are confirmed or they fail: a second command for the same resource
+  while the first is in flight gets `busy`.
+- Music Assistant as an add-on authenticates Home Assistant as a system user,
+  and Music Assistant refuses such tokens on its LAN web server. Paste a token
+  once in Settings -> Devices and services -> Helios -> Configure -> *Music
+  Assistant token for the clock*. It is stored as given, never verified, never
+  revoked, and changing it refreshes music on the clock's next connect.
 
-- motyw: Ciepły grafit / Nocny błękit,
-- tło: kolor motywu, zachowaj bieżące zdjęcie albo wgraj nowe (JPEG/PNG do 10 MB),
-- przyciemnienie 35-80 % i punkt kadru,
-- adres Sendspin (puste = wyliczony z adresu Music Assistant) i adres diagnostyki (puste = brak) - zegar dostaje je od razu przez subskrypcję.
+## Clock appearance
 
-Zdjęcie jest normalizowane w HA (orientacja EXIF, usunięcie metadanych, spłaszczenie przezroczystości, obwiednia 1600×960, JPEG ≤ 2 MB) i zapisane prywatnie w `config/helios/<entry_id>/`. Zegar pobiera je uwierzytelnionym GET `/api/helios/appearance/<entry_id>/<image_id>` (tylko właściciel parowania albo administrator). Zapis wyglądu nie restartuje integracji, muzyki ani zegara - zegar dostaje pełny snapshot `appearance` przez istniejącą subskrypcję.
+Settings -> Devices and services -> Helios -> the clock -> **Configure**: theme
+(warm graphite / night blue), background (theme colour, keep the current photo,
+or upload a new JPEG/PNG up to 10 MB), dimming 35-80 % and a focus point, plus
+the Sendspin, diagnostics and Music Assistant overrides.
+
+An uploaded photo is normalised in Home Assistant (EXIF orientation applied,
+metadata stripped, transparency flattened, bounded to 1600x960, JPEG under
+2 MB) and stored privately in `config/helios/<entry_id>/`. The clock fetches it
+with an authenticated `GET /api/helios/appearance/<entry_id>/<image_id>`, which
+serves only the current image and only to that clock's user or an administrator.
+
+## Development
+
+```bash
+pip install -r requirements_test.txt
+python -m pytest tests
+```
+
+Python 3.14; `pytest-homeassistant-custom-component` pulls in Home Assistant
+2026.8.3. The suite covers the pure helpers plus component tests of pairing,
+identity and the device channel. GitHub Actions runs hassfest, HACS validation,
+those tests and an import check on every push.
+
+Strings live in `strings.json` (English) and `translations/pl.json` (Polish).
+Logs and exception texts are English; entity names come from translation keys,
+so they follow the language of each Home Assistant user.
+
+The Polish README is kept as [README.pl.md](README.pl.md).

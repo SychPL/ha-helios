@@ -88,7 +88,7 @@ async def test_wrong_codes_are_401_and_the_source_is_blocked_after_five(hass, ha
     assert (await post(hass, client, flow_id, code)).status == 401, "blocked source, right code"
     assert claims == ["000000"] * PAIRING_MAX_ATTEMPTS, "the sixth request never reaches claim()"
     assert registry.pending(code), "the code itself survives"
-    assert code not in caplog.text and "odrzucone parowanie" in caplog.text
+    assert code not in caplog.text and "refused pairing" in caplog.text
 
 
 async def test_chunked_and_oversized_bodies(hass, hass_client_no_auth, monkeypatch):
@@ -214,7 +214,7 @@ async def test_hanging_restore_reload_is_bounded(hass, hass_client_no_auth, monk
     started = asyncio.get_running_loop().time()
     assert (await post(hass, client, flow_id2, code2)).status == 503
     assert asyncio.get_running_loop().time() - started < 2.5, "restore (0.3) inside the budget (1.0) plus rollback (0.3); in production 30 + 10 stays far under the clock's 60 s"
-    assert "przywrócenie poprzedniego wpisu nie powiodło się" in caplog.text
+    assert "restoring the previous entry failed" in caplog.text
 
 
 async def test_cleanup_timeout_after_the_commit_point_keeps_the_new_identity(hass, hass_client_no_auth, monkeypatch):
@@ -296,7 +296,7 @@ async def test_rollback_continues_when_one_step_fails(hass, hass_client_no_auth,
     monkeypatch.setattr(pair_http.identity, "async_create_music_section", lambda hass_, i, options=None: _coro({"url": "http://ma:8095", "token": "clock-token"}))
     assert (await post(hass, client, flow_id, code)).status == 409, "a controlled answer, never a 500"
     assert revoked == [{"url": "http://ma:8095", "token": "clock-token"}], "the later step still ran"
-    assert "użytkownik" in caplog.text and "store down" not in caplog.text
+    assert "(user)" in caplog.text and "store down" not in caplog.text
 
 
 async def _coro(value):

@@ -92,7 +92,7 @@ def test_expired_codes_are_still_refused():
 
 
 def test_sendspin_url_is_derived_from_the_ma_host():
-    assert const.sendspin_url_for("http://192.168.1.50:8095") == "ws://192.168.1.50:8927/sendspin"
+    assert const.sendspin_url_for("http://192.0.2.20:8095") == "ws://192.0.2.20:8927/sendspin"
     assert const.sendspin_url_for("https://ma.local/") == "ws://ma.local:8927/sendspin"
     assert const.sendspin_url_for("http://[fd00::5]:8095") == "ws://[fd00::5]:8927/sendspin"
     assert const.sendspin_url_for("") == ""

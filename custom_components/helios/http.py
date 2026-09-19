@@ -99,7 +99,7 @@ class HeliosPairView(HomeAssistantView):
             return self.json({"error": "invalid_request"}, status_code=400)
         registry = data["pairing"]
         if registry.blocked(source):
-            _LOGGER.warning("Helios: odrzucone parowanie z %s", source)
+            _LOGGER.warning("Helios: refused pairing from %s", source)
             return self.json({"error": "unauthorized"}, status_code=401)
         installation_id = parsed["installation_id"]
         if installation_id in data["pairing_active"]:
@@ -110,7 +110,7 @@ class HeliosPairView(HomeAssistantView):
             async with lock:
                 pending = registry.claim(parsed["code"], source)
                 if pending is None:
-                    _LOGGER.warning("Helios: odrzucone parowanie z %s", source)
+                    _LOGGER.warning("Helios: refused pairing from %s", source)
                     return self.json({"error": "unauthorized"}, status_code=401)
                 pending["existing"] = _entry_for(hass, installation_id)  # read under the lock: a re-pair in flight cannot slip in between
                 try:
@@ -120,7 +120,7 @@ class HeliosPairView(HomeAssistantView):
                     return self.json({"error": err.error}, status_code=err.status)
                 except TimeoutError:
                     return self.json({"error": "not_ready"}, status_code=503)
-            _LOGGER.info("Helios %s sparowany z %s", installation_id[:8], source)
+            _LOGGER.info("Helios %s paired from %s", installation_id[:8], source)
             return self.json({"protocol": PROTOCOL, "token": token, "pipeline": pipeline, "dashboard_path": DASHBOARD_PATH})
         finally:
             data["pairing_active"].discard(installation_id)
@@ -178,7 +178,7 @@ async def _pair(hass: HomeAssistant, data: dict, pending: dict, parsed: dict) ->
                     except TimeoutError:
                         restored = False
                     if not restored:
-                        _LOGGER.error("Helios %s: przywrócenie poprzedniego wpisu nie powiodło się", installation_id[:8])
+                        _LOGGER.error("Helios %s: restoring the previous entry failed", installation_id[:8])
             if not ok:
                 raise PairingFailed(503, "not_ready")
             if not pending["future"].done():
@@ -205,9 +205,9 @@ async def _pair(hass: HomeAssistant, data: dict, pending: dict, parsed: dict) ->
         raise
     except BaseException as err:
         await _rollback(hass, data, pending, user_id, music, existing is None)
-        if isinstance(err, TimeoutError | asyncio.CancelledError):
-            raise
-        _LOGGER.warning("Helios %s: parowanie nieudane: %s", installation_id[:8], type(err).__name__)
+        if isinstance(err, TimeoutError | asyncio.CancelledError | SystemExit | KeyboardInterrupt):
+            raise  # a shutdown or a cancel is not a pairing error and must not be swallowed
+        _LOGGER.warning("Helios %s: pairing failed: %s", installation_id[:8], type(err).__name__)
         raise PairingFailed(503, "not_ready") from err
     # commit point: the new entry is loaded, nothing below may fail the request
     hass.async_create_task(_retire(hass, previous_user if previous_user != user_id else None, previous_music))
@@ -239,7 +239,7 @@ async def _rollback(hass: HomeAssistant, data: dict, pending: dict, user_id: str
         if entry is not None:
             names.append("wpis")
             steps.append(hass.config_entries.async_remove(entry.entry_id))
-        names.append("użytkownik")
+        names.append("user")
         steps.append(identity.async_remove_identity(hass, user_id))
     names.append("token MA")
     steps.append(identity.async_revoke_music_section(hass, music))
@@ -249,23 +249,23 @@ async def _rollback(hass: HomeAssistant, data: dict, pending: dict, user_id: str
             # the removals are idempotent, so async_remove_entry's own cleanup running alongside is harmless
             results = await asyncio.gather(*steps, return_exceptions=True)
     except TimeoutError:
-        _LOGGER.error("Helios: sprzątanie nieudanego parowania przekroczyło %s s", ROLLBACK_TIMEOUT_SECONDS)
+        _LOGGER.error("Helios: cleaning up a failed pairing took longer than %s s", ROLLBACK_TIMEOUT_SECONDS)
         return
     for name, result in zip(names, results, strict=True):
         if isinstance(result, BaseException):
-            _LOGGER.warning("Helios: sprzątanie nieudanego parowania (%s): %s", name, type(result).__name__)
+            _LOGGER.warning("Helios: cleaning up a failed pairing (%s): %s", name, type(result).__name__)
 
 
 async def _retire(hass: HomeAssistant, user_id: str | None, music: dict | None) -> None:
     """Past the commit point: best effort, both steps independently under one 10 s budget, warnings only."""
-    names = ("użytkownik", "token MA")
+    names = ("user", "MA token")
     steps = (identity.async_remove_identity(hass, user_id), identity.async_revoke_music_section(hass, music))
     try:
         async with asyncio.timeout(RETIRE_TIMEOUT_SECONDS):
             results = await asyncio.gather(*steps, return_exceptions=True)  # a hung step never blocks the other one
     except TimeoutError:
-        _LOGGER.warning("Poprzednia tożsamość zegara nie została w pełni usunięta w %s s", RETIRE_TIMEOUT_SECONDS)
+        _LOGGER.warning("The clock's previous identity was not fully removed within %s s", RETIRE_TIMEOUT_SECONDS)
         return
     for name, result in zip(names, results, strict=True):
         if isinstance(result, BaseException):
-            _LOGGER.warning("Poprzednia tożsamość zegara nie została w pełni usunięta (%s): %s", name, type(result).__name__)
+            _LOGGER.warning("The clock's previous identity was not fully removed (%s): %s", name, type(result).__name__)

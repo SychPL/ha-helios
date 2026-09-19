@@ -62,5 +62,41 @@
         "upload": "Wgraj nowe zdjęcie"
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "app_version": {
+        "name": "Wersja aplikacji"
+      },
+      "voice_state": {
+        "name": "Stan głosu"
+      },
+      "pad_version": {
+        "name": "Wersja docka"
+      }
+    },
+    "binary_sensor": {
+      "dock_connected": {
+        "name": "Dock podłączony"
+      },
+      "charging": {
+        "name": "Ładowanie telefonu"
+      }
+    },
+    "light": {
+      "dock_lamp": {
+        "name": "Lampka docka"
+      }
+    },
+    "number": {
+      "device_volume": {
+        "name": "Głośność urządzenia"
+      }
+    },
+    "media_player": {
+      "clock_speaker": {
+        "name": "Głośnik zegara"
+      }
+    }
   }
 }

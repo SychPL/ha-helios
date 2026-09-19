@@ -52,11 +52,11 @@ def music_source(hass: HomeAssistant) -> tuple[str, str] | None:
     """url and token of the first LOADED core music_assistant entry (SPEC 0.10 pkt 6.1); None with one warning when there is none."""
     loaded = [e for e in hass.config_entries.async_entries("music_assistant") if e.state is ConfigEntryState.LOADED]
     if not loaded:
-        _LOGGER.warning("Brak załadowanej integracji Music Assistant - zegar bez muzyki")
+        _LOGGER.warning("No loaded Music Assistant integration - the clock gets no music")
         return None
     entry = loaded[0]
     if len(loaded) > 1:
-        _LOGGER.info("Kilka wpisów Music Assistant, Helios używa %s", entry.data.get("url"))
+        _LOGGER.info("Several Music Assistant entries, Helios uses %s", entry.data.get("url"))
     if not (entry.data.get("url") and entry.data.get("token")):
         _LOGGER.warning("Wpis Music Assistant bez tokena (schemat < 28) - zegar bez muzyki")
         return None
@@ -77,9 +77,9 @@ async def async_public_music_url(hass: HomeAssistant, url: str) -> str:
         public = getattr(info, "base_url", None) or getattr(info, "internal_url", None)
         if public:
             return str(public).rstrip("/")
-        _LOGGER.warning("Music Assistant nie podał swojego adresu - zegar dostanie %s", url)
+        _LOGGER.warning("Music Assistant did not report its own address - the clock gets %s", url)
     except Exception as err:  # noqa: BLE001 - the stored url is the fallback
-        _LOGGER.warning("Nie udało się odczytać adresu Music Assistant (%s): %s", url, type(err).__name__)
+        _LOGGER.warning("Could not read the Music Assistant address (%s): %s", url, type(err).__name__)
     return url
 
 
@@ -103,7 +103,7 @@ async def _clock_user(client) -> str | None:
     try:
         users = [u for u in await client.auth.list_users() if not _is_system(u)]
     except Exception as err:  # noqa: BLE001 - not an admin, or an MA without user management
-        _LOGGER.debug("Nie udało się pobrać użytkowników MA: %s", type(err).__name__)
+        _LOGGER.debug("Could not list Music Assistant users: %s", type(err).__name__)
         return None
     if not users:
         return None
@@ -123,7 +123,7 @@ async def async_create_music_section(hass: HomeAssistant, installation_id: str, 
     if manual:
         public = override or (await async_public_music_url(hass, source[0]) if source else "")
         if not public:
-            _LOGGER.warning("Token MA jest ustawiony, ale nie znam adresu serwera - uzupełnij adres w opcjach integracji")
+            _LOGGER.warning("A Music Assistant token is set but the server address is unknown - fill it in the integration options")
             return None
         return {"url": public, "source_url": source[0] if source else "", "token": manual, "minted": MUSIC_SECTION_REVISION, "manual": True}
     if source is None:
@@ -146,11 +146,11 @@ async def async_create_music_section(hass: HomeAssistant, installation_id: str, 
             # MA add-on: Home Assistant authenticates as a system user, which may neither mint a token for a person nor
             # use its own token on the LAN webserver. Nothing the integration can do - the user pastes a token once.
             _LOGGER.warning(
-                "Music Assistant nie pozwala integracji wystawić tokena dla zegara (dodatek MA widzi Home Assistant jako użytkownika systemowego). "
-                "Wejdź w Ustawienia → Urządzenia i usługi → Helios → Konfiguruj i wklej token Music Assistant (Music Assistant → Ustawienia → Tokeny)."
+                "Music Assistant will not let the integration mint a token for the clock (the add-on sees Home Assistant as a system user). "
+                "Go to Settings -> Devices and services -> Helios -> Configure and paste a Music Assistant token (Music Assistant -> Settings -> Tokens)."
             )
         else:
-            _LOGGER.warning("Nie udało się utworzyć tokena MA dla %s: %s", _label(installation_id), type(err).__name__)
+            _LOGGER.warning("Could not create a Music Assistant token for %s: %s", _label(installation_id), type(err).__name__)
         if sent:
             await _revoke_by_name(hass, url, token, name, user_id)  # bounded (MA_TIMEOUT_SECONDS), safe after a delivered cancel
         if isinstance(err, asyncio.CancelledError):
@@ -159,7 +159,7 @@ async def async_create_music_section(hass: HomeAssistant, installation_id: str, 
     section = {"url": public, "source_url": url, "token": clock_token, "minted": MUSIC_SECTION_REVISION}
     refused = await _token_refused(hass, section)
     if refused:
-        _LOGGER.warning("Music Assistant odrzuca token zegara pod adresem %s (%s) - zegar bez muzyki", public, refused)
+        _LOGGER.warning("Music Assistant refuses the clock's token at %s (%s) - the clock gets no music", public, refused)
         await async_revoke_music_section(hass, section)
         return None
     return section
@@ -178,7 +178,7 @@ async def _token_refused(hass: HomeAssistant, section: dict) -> str | None:
     except (AuthenticationFailed, AuthenticationRequired, InvalidToken) as err:
         return str(err)[:120]
     except Exception as err:  # noqa: BLE001
-        _LOGGER.debug("Nie udało się sprawdzić tokena MA pod %s: %s", section["url"], type(err).__name__)
+        _LOGGER.debug("Could not verify the Music Assistant token at %s: %s", section["url"], type(err).__name__)
     return None
 
 
@@ -190,8 +190,8 @@ async def _revoke_by_name(hass: HomeAssistant, url: str, token: str, name: str, 
             for item in items:
                 if item.name == name:
                     await client.auth.revoke_token(item.token_id)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as err:  # noqa: BLE001 - best effort; the token may simply never have been created
+        _LOGGER.debug("Could not revoke the Music Assistant token named %s: %s", name, type(err).__name__)
 
 
 def quiet_music_source(hass: HomeAssistant) -> tuple[str, str] | None:
@@ -210,7 +210,7 @@ async def async_revoke_music_section(hass: HomeAssistant, section: dict | None) 
         async with asyncio.timeout(MA_TIMEOUT_SECONDS), _client(hass, section["url"], section["token"]) as client:
             await client.auth.logout()
     except Exception as err:  # noqa: BLE001
-        _LOGGER.warning("Nie udało się unieważnić tokena MA zegara: %s", type(err).__name__)
+        _LOGGER.warning("Could not revoke the clock's Music Assistant token: %s", type(err).__name__)
 
 
 def preferred_pipeline(hass: HomeAssistant) -> str | None:

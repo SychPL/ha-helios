@@ -128,10 +128,10 @@ async def test_music_section_is_created_and_revoked_through_the_ma_client(hass, 
 
     monkeypatch.setattr(identity, "_client", lambda hass, url, token: FakeClient(url, None, token))
     monkeypatch.setattr(identity, "music_source", lambda hass: ("http://d5369777-music-assistant:8094", "ma-token"))
-    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.0.2.10:8095"))
     section = await identity.async_create_music_section(hass, INSTALLATION)
     # the clock gets the address the server reports, HA keeps the entry url for its own calls (SPEC 0.10 pkt 6.1)
-    assert section == {"url": "http://192.168.1.212:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "clock-token", "minted": 2}
+    assert section == {"url": "http://192.0.2.10:8095", "source_url": "http://d5369777-music-assistant:8094", "token": "clock-token", "minted": 2}
     assert created[0][0] == "ma-token" and created[0][1].startswith("Helios 0f3c1b2a ") and len(created[0][1].split()[-1]) == 6
     await identity.async_revoke_music_section(hass, section)
     assert revoked == ["clock-token"]
@@ -146,12 +146,12 @@ async def test_public_music_url_prefers_what_the_server_reports(hass, monkeypatc
     from types import SimpleNamespace
 
     async def info(url, aiohttp_session=None, ssl_context=None):
-        return SimpleNamespace(base_url="http://192.168.1.212:8095/", internal_url="http://x", external_url=None)
+        return SimpleNamespace(base_url="http://192.0.2.10:8095/", internal_url="http://x", external_url=None)
 
     import music_assistant_client.auth_helpers as helpers
 
     monkeypatch.setattr(helpers, "get_server_info", info)
-    assert await identity.async_public_music_url(hass, "http://d5369777-music-assistant:8094") == "http://192.168.1.212:8095"
+    assert await identity.async_public_music_url(hass, "http://d5369777-music-assistant:8094") == "http://192.0.2.10:8095"
 
     async def broken(url, aiohttp_session=None, ssl_context=None):
         raise OSError("down")
@@ -165,9 +165,9 @@ async def test_connection_payload_honours_the_music_url_override(hass):
     auto = identity.connection_payload(hass, data, {})
     assert auto["music_assistant"]["url"] == "http://d5369777-music-assistant:8094"
     assert auto["music_assistant"]["sendspin_url"] == "ws://d5369777-music-assistant:8927/sendspin"
-    override = identity.connection_payload(hass, data, {"music_url": "http://192.168.1.212:8095/"})
-    assert override["music_assistant"]["url"] == "http://192.168.1.212:8095"
-    assert override["music_assistant"]["sendspin_url"] == "ws://192.168.1.212:8927/sendspin"
+    override = identity.connection_payload(hass, data, {"music_url": "http://192.0.2.10:8095/"})
+    assert override["music_assistant"]["url"] == "http://192.0.2.10:8095"
+    assert override["music_assistant"]["sendspin_url"] == "ws://192.0.2.10:8927/sendspin"
 
 
 class _FakeAuth:
@@ -196,7 +196,7 @@ class _FakeAuth:
     async def get_current_user(self):
         if self.refuse_token:
             raise self.refuse_token
-        return SimpleNamespace(username="mateusz")
+        return SimpleNamespace(username="alice")
 
     async def logout(self):
         self.log.append(("logout", self.token))
@@ -220,14 +220,14 @@ def _fake_client(log, users, refuse_token=None):
 async def test_the_clock_token_is_minted_for_a_regular_user_not_the_ha_system_user(hass, monkeypatch):
     """MA refuses Home Assistant system-user tokens on its LAN webserver, so the token must belong to a person (MA 2.10.3)."""
     log = []
-    users = [SimpleNamespace(user_id="sys", role="system"), SimpleNamespace(user_id="u-mateusz", role="admin")]
+    users = [SimpleNamespace(user_id="sys", role="system"), SimpleNamespace(user_id="u-alice", role="admin")]
     monkeypatch.setattr(identity, "music_source", lambda hass: ("http://d5369777-music-assistant:8094", "ma-token"))
-    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.0.2.10:8095"))
     monkeypatch.setattr(identity, "_client", _fake_client(log, users))
     section = await identity.async_create_music_section(hass, INSTALLATION)
-    assert section["url"] == "http://192.168.1.212:8095" and section["token"] == "clock-token"
-    assert ("create", section and log[1][1], "u-mateusz") in log, log
-    assert ("connect", "http://192.168.1.212:8095") in log, "the token is verified from the clock's address"
+    assert section["url"] == "http://192.0.2.10:8095" and section["token"] == "clock-token"
+    assert ("create", section and log[1][1], "u-alice") in log, log
+    assert ("connect", "http://192.0.2.10:8095") in log, "the token is verified from the clock's address"
 
 
 async def test_a_refused_token_is_revoked_and_leaves_no_section(hass, monkeypatch, caplog):
@@ -235,12 +235,12 @@ async def test_a_refused_token_is_revoked_and_leaves_no_section(hass, monkeypatc
 
     log = []
     monkeypatch.setattr(identity, "music_source", lambda hass: ("http://ma:8094", "ma-token"))
-    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.0.2.10:8095"))
     monkeypatch.setattr(identity, "_client", _fake_client(log, None, AuthenticationFailed("Home Assistant system user not allowed on regular webserver")))
     assert await identity.async_create_music_section(hass, INSTALLATION) is None
     assert ("create", log[1][1], None) in log, "no user list: mint for whoever we are"
     assert any(step[0] == "logout" for step in log), "a token the clock cannot use is revoked"
-    assert "odrzuca token zegara" in caplog.text
+    assert "refuses the clock's token" in caplog.text
 
 
 async def test_music_section_is_none_without_ma_or_on_errors(hass, monkeypatch):
@@ -299,11 +299,11 @@ async def test_a_pasted_token_is_used_as_is_and_never_revoked(hass, monkeypatch)
     log = []
     monkeypatch.setattr(identity, "quiet_music_source", lambda hass: ("http://d5369777-music-assistant:8094", "ma-token"))
     monkeypatch.setattr(identity, "music_source", lambda hass: pytest.fail("a pasted token must not go through minting"))
-    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.168.1.212:8095"))
+    monkeypatch.setattr(identity, "async_public_music_url", lambda hass, url: _url("http://192.0.2.10:8095"))
     monkeypatch.setattr(identity, "_client", _fake_client(log, None))
     section = await identity.async_create_music_section(hass, INSTALLATION, {"music_token": " pasted-token "})
     assert section == {
-        "url": "http://192.168.1.212:8095",
+        "url": "http://192.0.2.10:8095",
         "source_url": "http://d5369777-music-assistant:8094",
         "token": "pasted-token",
         "minted": 2,
@@ -316,11 +316,11 @@ async def test_a_pasted_token_is_used_as_is_and_never_revoked(hass, monkeypatch)
 
 async def test_a_pasted_token_with_an_address_override_needs_no_ma_entry(hass, monkeypatch):
     monkeypatch.setattr(identity, "quiet_music_source", lambda hass: None)
-    section = await identity.async_create_music_section(hass, INSTALLATION, {"music_token": "t", "music_url": "http://192.168.1.212:8095"})
-    assert section["url"] == "http://192.168.1.212:8095" and section["source_url"] == ""
+    section = await identity.async_create_music_section(hass, INSTALLATION, {"music_token": "t", "music_url": "http://192.0.2.10:8095"})
+    assert section["url"] == "http://192.0.2.10:8095" and section["source_url"] == ""
 
 
 async def test_a_pasted_token_without_any_address_is_refused(hass, monkeypatch, caplog):
     monkeypatch.setattr(identity, "quiet_music_source", lambda hass: None)
     assert await identity.async_create_music_section(hass, INSTALLATION, {"music_token": "t"}) is None
-    assert "nie znam adresu serwera" in caplog.text
+    assert "server address is unknown" in caplog.text

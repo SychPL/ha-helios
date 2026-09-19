@@ -15,16 +15,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     coordinator = hass.data[DOMAIN]["entries"][entry.entry_id]
     async_add_entities(
         [
-            HeliosBinarySensor(coordinator, "dock_connected", "Dock podłączony", BinarySensorDeviceClass.CONNECTIVITY),
+            HeliosBinarySensor(coordinator, "dock_connected", BinarySensorDeviceClass.CONNECTIVITY),
             HeliosChargingSensor(coordinator),
         ]
     )
 
 
 class HeliosBinarySensor(HeliosEntity, BinarySensorEntity):
-    def __init__(self, coordinator, key, name, device_class) -> None:
+    def __init__(self, coordinator, key, device_class) -> None:
         super().__init__(coordinator, key)
-        self._attr_name = name
+        self._attr_translation_key = key
         self._attr_device_class = device_class
 
     @property
@@ -36,7 +36,7 @@ class HeliosChargingSensor(HeliosBinarySensor):
     """Charging is only meaningful while a dock is known to be connected; a stop is not proof the phone was lifted."""
 
     def __init__(self, coordinator) -> None:
-        super().__init__(coordinator, "charging", "Ładowanie telefonu", BinarySensorDeviceClass.BATTERY_CHARGING)
+        super().__init__(coordinator, "charging", BinarySensorDeviceClass.BATTERY_CHARGING)
 
     @property
     def available(self) -> bool:

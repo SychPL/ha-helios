@@ -69,6 +69,7 @@ async def _options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     data = hass.data.setdefault(DOMAIN, new_domain_data())
     data["cancelled_users"].pop(entry.data.get("user_id"), None)
+    data["locks"].pop(entry.data.get("installation_id"), None)
     await identity.async_remove_identity(hass, entry.data.get("user_id"))
     await identity.async_revoke_music_section(hass, entry.data.get("music_assistant"))
     await hass.async_add_executor_job(shutil.rmtree, hass.config.path("helios", entry.entry_id), True)
