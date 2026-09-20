@@ -28,7 +28,9 @@ def test_validation_accepts_both_shapes_and_rejects_everything_else():
     assert appearance.validate_appearance(appearance.DEFAULT_APPEARANCE) == appearance.DEFAULT_APPEARANCE
     assert appearance.validate_appearance(image_background())["background"]["dim"] == 50
     for bad in (
-        {"version": 2, "theme": "warm_graphite", "background": {"type": "solid"}},
+        {"version": 3, "theme": "warm_graphite", "background": {"type": "solid"}},
+        # the screensaver block belongs to version 2 only (SPEC 0.14)
+        {"version": 1, "theme": "warm_graphite", "background": {"type": "solid"}, "screensaver": appearance.SCREENSAVER_DEFAULTS},
         {"version": 1, "theme": "neon", "background": {"type": "solid"}},
         {"version": 1, "theme": "warm_graphite", "background": {"type": "solid", "dim": 50}},
         {"version": 1, "theme": "warm_graphite", "background": {"type": "solid"}, "extra": 1},
@@ -48,6 +50,33 @@ def test_validation_accepts_both_shapes_and_rejects_everything_else():
             appearance.validate_appearance(bad)
     assert appearance.snapshot("e", {}) == appearance.DEFAULT_APPEARANCE
     assert appearance.snapshot("e", {"appearance": {"version": 9}}) == appearance.DEFAULT_APPEARANCE
+
+
+def test_screensaver_block_is_validated_as_a_whole():
+    good = {"version": 2, "theme": "warm_graphite", "background": {"type": "solid"}, "screensaver": dict(appearance.SCREENSAVER_DEFAULTS)}
+    assert appearance.validate_appearance(good)["screensaver"] == appearance.SCREENSAVER_DEFAULTS
+
+    def saver(**changes):
+        block = dict(appearance.SCREENSAVER_DEFAULTS)
+        block.update(changes)
+        return {"version": 2, "theme": "warm_graphite", "background": {"type": "solid"}, "screensaver": block}
+
+    for bad in (
+        saver(mode="night"),
+        saver(idle_seconds=5),           # shorter than the guarantee the clock owes after a touch
+        saver(idle_seconds=10_000),
+        saver(idle_seconds=60.0),
+        saver(dark_enter=8, dark_exit=3),  # the pair is checked as a pair, not field by field
+        saver(dark_enter=5, dark_exit=5),
+        saver(dark_exit=200),
+        saver(photos="yes"),
+        saver(photo_seconds=5),
+        saver(photo_dim=95),
+        {"version": 2, "theme": "warm_graphite", "background": {"type": "solid"}, "screensaver": {"mode": "dark"}},
+        {"version": 2, "theme": "warm_graphite", "background": {"type": "solid"}, "screensaver": "dark"},
+    ):
+        with pytest.raises(ValueError):
+            appearance.validate_appearance(bad)
 
 
 def _png_with_alpha(size=(3000, 2000)):

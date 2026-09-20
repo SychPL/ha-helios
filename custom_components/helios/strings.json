@@ -45,10 +45,18 @@
       "animated_image": "Animated images are not supported.",
       "image_too_large": "The image has too many pixels (max 24 million, 8192 per side).",
       "corrupt_image": "The image could not be read.",
-      "invalid_url": "The Music Assistant address must start with http:// or https://, the Sendspin address with ws:// or wss://, and the diagnostics address with http:// or https://."
+      "invalid_url": "The Music Assistant address must start with http:// or https://, the Sendspin address with ws:// or wss://, and the diagnostics address with http:// or https://.",
+      "dark_exit_too_low": "The light level that wakes the panel must be higher than the one that dims it: the gap between them is what keeps the screen from flickering."
     }
   },
   "selector": {
+    "screensaver_mode": {
+      "options": {
+        "off": "Never",
+        "dark": "Only in a dark room",
+        "always": "After every quiet spell"
+      }
+    },
     "theme": {
       "options": {
         "warm_graphite": "Warm graphite",

@@ -126,9 +126,12 @@ class HeliosOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input=None) -> ConfigFlowResult:
         current = ap.snapshot(self.config_entry.entry_id, self.config_entry.options)
         background = current["background"]
+        saver = current.get("screensaver", ap.SCREENSAVER_DEFAULTS)
         errors: dict[str, str] = {}
         if user_input is not None:
             self._draft = user_input
+            if int(user_input.get("dark_exit", 0)) <= int(user_input.get("dark_enter", 0)):
+                errors["dark_exit"] = "dark_exit_too_low"  # the gap between the two is the hysteresis
             if user_input["background"] == "upload":
                 return await self.async_step_upload()
             music = (user_input.get("music_url") or "").strip()
@@ -170,6 +173,26 @@ class HeliosOptionsFlow(OptionsFlow):
                 vol.Optional("music_url", default=self.config_entry.options.get("music_url", "")): str,  # SPEC 0.10 pkt 6.1: empty = the address Music Assistant reports
                 vol.Optional("sendspin_url", default=self.config_entry.options.get("sendspin_url", "")): str,  # SPEC 0.10 pkt 6.2: empty = derived from the MA url
                 vol.Optional("diagnostics_url", default=self.config_entry.options.get("diagnostics_url", "")): str,  # empty = no diagnostics sink
+                # SPEC 0.14: off = never, dark = only a dark room (the 0.13 behaviour), always = after any quiet spell
+                vol.Required("screensaver_mode", default=saver["mode"]): SelectSelector(
+                    SelectSelectorConfig(options=list(ap.SCREENSAVER_MODES), mode=SelectSelectorMode.DROPDOWN, translation_key="screensaver_mode")
+                ),
+                vol.Required("idle_seconds", default=saver["idle_seconds"]): NumberSelector(
+                    NumberSelectorConfig(min=ap.IDLE_MIN, max=ap.IDLE_MAX, step=5, mode=NumberSelectorMode.BOX, unit_of_measurement="s")
+                ),
+                vol.Required("dark_enter", default=saver["dark_enter"]): NumberSelector(
+                    NumberSelectorConfig(min=ap.LUX_MIN, max=ap.LUX_MAX, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="lx")
+                ),
+                vol.Required("dark_exit", default=saver["dark_exit"]): NumberSelector(
+                    NumberSelectorConfig(min=ap.LUX_MIN, max=ap.LUX_MAX, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="lx")
+                ),
+                vol.Required("photos", default=saver["photos"]): bool,  # the slideshow only ever runs in a lit room
+                vol.Required("photo_seconds", default=saver["photo_seconds"]): NumberSelector(
+                    NumberSelectorConfig(min=ap.PHOTO_SECONDS_MIN, max=ap.PHOTO_SECONDS_MAX, step=5, mode=NumberSelectorMode.BOX, unit_of_measurement="s")
+                ),
+                vol.Required("photo_dim", default=saver["photo_dim"]): NumberSelector(
+                    NumberSelectorConfig(min=ap.PHOTO_DIM_MIN, max=ap.PHOTO_DIM_MAX, step=1, mode=NumberSelectorMode.SLIDER, unit_of_measurement="%")
+                ),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
@@ -219,7 +242,18 @@ class HeliosOptionsFlow(OptionsFlow):
                     "focus_x": int(round(float(draft.get("focus_x", 50)))),
                     "focus_y": int(round(float(draft.get("focus_y", 50)))),
                 }
-            options["appearance"] = ap.validate_appearance({"version": 1, "theme": draft.get("theme", "warm_graphite"), "background": background})
+            screensaver = {
+                "mode": draft.get("screensaver_mode", ap.SCREENSAVER_DEFAULTS["mode"]),
+                "idle_seconds": int(round(float(draft.get("idle_seconds", ap.SCREENSAVER_DEFAULTS["idle_seconds"])))),
+                "dark_enter": int(round(float(draft.get("dark_enter", ap.SCREENSAVER_DEFAULTS["dark_enter"])))),
+                "dark_exit": int(round(float(draft.get("dark_exit", ap.SCREENSAVER_DEFAULTS["dark_exit"])))),
+                "photos": bool(draft.get("photos", ap.SCREENSAVER_DEFAULTS["photos"])),
+                "photo_seconds": int(round(float(draft.get("photo_seconds", ap.SCREENSAVER_DEFAULTS["photo_seconds"])))),
+                "photo_dim": int(round(float(draft.get("photo_dim", ap.SCREENSAVER_DEFAULTS["photo_dim"])))),
+            }
+            options["appearance"] = ap.validate_appearance(
+                {"version": 2, "theme": draft.get("theme", "warm_graphite"), "background": background, "screensaver": screensaver}
+            )
             result = self.async_create_entry(title="", data=options)
             if data is not None:
                 # the previous file stays until the next upload: HA persists entries with a delay, so a crash in between

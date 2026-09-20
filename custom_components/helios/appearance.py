@@ -12,6 +12,22 @@ import re
 from pathlib import Path
 
 THEMES = ("warm_graphite", "night_blue")
+SCREENSAVER_MODES = ("off", "dark", "always")
+# SPEC 0.14: the night clock. These defaults reproduce 0.13 exactly, so a clock nobody configures behaves the
+# way it does today - black clock in a dark room, ordinary panel in a lit one.
+SCREENSAVER_DEFAULTS = {
+    "mode": "dark",
+    "idle_seconds": 60,
+    "dark_enter": 3,
+    "dark_exit": 8,
+    "photos": False,
+    "photo_seconds": 120,
+    "photo_dim": 45,
+}
+IDLE_MIN, IDLE_MAX = 15, 3600
+LUX_MIN, LUX_MAX = 0, 100
+PHOTO_SECONDS_MIN, PHOTO_SECONDS_MAX = 15, 3600
+PHOTO_DIM_MIN, PHOTO_DIM_MAX = 0, 90
 DEFAULT_APPEARANCE = {"version": 1, "theme": "warm_graphite", "background": {"type": "solid"}}
 DIM_MIN, DIM_MAX, DIM_DEFAULT = 35, 80, 50
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -32,19 +48,23 @@ def validate_appearance(value: object) -> dict:
     """Strict, whole-object validation; raises ValueError with a short reason. Unknown keys are rejected."""
     if not isinstance(value, dict):
         raise ValueError("appearance must be an object")
-    if set(value) != {"version", "theme", "background"}:
-        raise ValueError("appearance keys must be version, theme, background")
-    if value["version"] != 1:
+    keys = set(value)
+    if keys not in ({"version", "theme", "background"}, {"version", "theme", "background", "screensaver"}):
+        raise ValueError("appearance keys must be version, theme, background and optionally screensaver")
+    if value["version"] not in (1, 2):
         raise ValueError("unsupported appearance version")
+    if "screensaver" in keys and value["version"] != 2:
+        raise ValueError("screensaver needs appearance version 2")
     if value["theme"] not in THEMES:
         raise ValueError("unknown theme")
     background = value["background"]
     if not isinstance(background, dict) or background.get("type") not in ("solid", "image"):
         raise ValueError("background.type must be solid or image")
+    screensaver = validate_screensaver(value["screensaver"]) if "screensaver" in keys else None
     if background["type"] == "solid":
         if set(background) != {"type"}:
             raise ValueError("solid background takes no other fields")
-        return {"version": 1, "theme": value["theme"], "background": {"type": "solid"}}
+        return _assembled(value["version"], value["theme"], {"type": "solid"}, screensaver)
     if set(background) != {"type", "image_id", "path", "dim", "focus_x", "focus_y"}:
         raise ValueError("image background needs image_id, path, dim, focus_x, focus_y")
     image_id = background["image_id"]
@@ -62,7 +82,42 @@ def validate_appearance(value: object) -> dict:
         if isinstance(number, bool) or not isinstance(number, int) or not low <= number <= high:
             raise ValueError(f"{key} must be an integer in {low}-{high}")
         out[key] = number
-    return {"version": 1, "theme": value["theme"], "background": out}
+    return _assembled(value["version"], value["theme"], out, screensaver)
+
+
+def _assembled(version: int, theme: str, background: dict, screensaver: dict | None) -> dict:
+    result = {"version": version, "theme": theme, "background": background}
+    if screensaver is not None:
+        result["screensaver"] = screensaver
+    return result
+
+
+def validate_screensaver(value: object) -> dict:
+    """Strict like the rest of the contract: the clock is the one allowed to be lenient, not the sender."""
+    if not isinstance(value, dict):
+        raise ValueError("screensaver must be an object")
+    if set(value) != set(SCREENSAVER_DEFAULTS):
+        raise ValueError("screensaver keys must be " + ", ".join(sorted(SCREENSAVER_DEFAULTS)))
+    if value["mode"] not in SCREENSAVER_MODES:
+        raise ValueError("screensaver.mode must be off, dark or always")
+    if not isinstance(value["photos"], bool):
+        raise ValueError("screensaver.photos must be true or false")
+    out = {"mode": value["mode"], "photos": value["photos"]}
+    for key, low, high in (
+        ("idle_seconds", IDLE_MIN, IDLE_MAX),
+        ("dark_enter", LUX_MIN, LUX_MAX),
+        ("dark_exit", LUX_MIN, LUX_MAX),
+        ("photo_seconds", PHOTO_SECONDS_MIN, PHOTO_SECONDS_MAX),
+        ("photo_dim", PHOTO_DIM_MIN, PHOTO_DIM_MAX),
+    ):
+        number = value[key]
+        if isinstance(number, bool) or not isinstance(number, int) or not low <= number <= high:
+            raise ValueError(f"screensaver.{key} must be an integer in {low}-{high}")
+        out[key] = number
+    # the two thresholds are a pair with hysteresis between them, so they are checked as a pair
+    if out["dark_exit"] <= out["dark_enter"]:
+        raise ValueError("screensaver.dark_exit must be greater than dark_enter")
+    return out
 
 
 def snapshot(entry_id: str, options: dict) -> dict:

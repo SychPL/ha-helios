@@ -45,10 +45,18 @@
       "animated_image": "Animowane obrazy nie są obsługiwane.",
       "image_too_large": "Obraz ma za dużo pikseli (maks. 24 mln, 8192 na bok).",
       "corrupt_image": "Nie udało się odczytać obrazu.",
-      "invalid_url": "Adres Music Assistant musi zaczynać się od http:// lub https://, adres Sendspin od ws:// lub wss://, adres diagnostyki od http:// lub https://."
+      "invalid_url": "Adres Music Assistant musi zaczynać się od http:// lub https://, adres Sendspin od ws:// lub wss://, adres diagnostyki od http:// lub https://.",
+      "dark_exit_too_low": "Poziom światła budzący panel musi być wyższy od tego, przy którym zegar się wygasza - odstęp między nimi zapobiega migotaniu."
     }
   },
   "selector": {
+    "screensaver_mode": {
+      "options": {
+        "off": "Nigdy",
+        "dark": "Tylko po ciemku",
+        "always": "Po każdej chwili ciszy"
+      }
+    },
     "theme": {
       "options": {
         "warm_graphite": "Ciepły grafit",
