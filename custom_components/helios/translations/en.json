@@ -81,6 +81,9 @@
       },
       "pad_version": {
         "name": "Dock version"
+      },
+      "lux": {
+        "name": "Light level"
       }
     },
     "binary_sensor": {

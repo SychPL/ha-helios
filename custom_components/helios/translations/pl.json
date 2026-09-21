@@ -81,6 +81,9 @@
       },
       "pad_version": {
         "name": "Wersja docka"
+      },
+      "lux": {
+        "name": "Poziom światła"
       }
     },
     "binary_sensor": {
