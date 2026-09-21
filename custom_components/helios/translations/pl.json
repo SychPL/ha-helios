@@ -27,7 +27,15 @@
           "sendspin_url": "Adres Sendspin (puste = wyliczony z adresu Music Assistant)",
           "diagnostics_url": "Adres diagnostyki (puste = brak)",
           "music_url": "Adres Music Assistant dla zegara (puste = adres zgłoszony przez serwer)",
-          "music_token": "Token Music Assistant dla zegara (puste = integracja wystawi własny; dodatek MA na to nie pozwala)"
+          "music_token": "Token Music Assistant dla zegara (puste = integracja wystawi własny; dodatek MA na to nie pozwala)",
+          "screensaver_mode": "Zegar nocny",
+          "idle_seconds": "Pokaż po tylu sekundach ciszy",
+          "dark_enter": "Ciemno poniżej tego poziomu światła",
+          "dark_exit": "Jasno od tego poziomu światła",
+          "notifications_block": "Widoczny kafelek ostrzegawczy trzyma panel włączony",
+          "photos": "Pokaz zdjęć przy świetle",
+          "photo_seconds": "Sekund na zdjęcie",
+          "photo_dim": "Przyciemnienie zdjęć w pokazie"
         }
       },
       "upload": {

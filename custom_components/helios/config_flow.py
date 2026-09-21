@@ -186,6 +186,8 @@ class HeliosOptionsFlow(OptionsFlow):
                 vol.Required("dark_exit", default=saver["dark_exit"]): NumberSelector(
                     NumberSelectorConfig(min=ap.LUX_MIN, max=ap.LUX_MAX, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="lx")
                 ),
+                # Off means a tile that stays lit for days (an open garage, say) stops holding the panel up.
+                vol.Required("notifications_block", default=saver.get("notifications_block", True)): bool,
                 vol.Required("photos", default=saver["photos"]): bool,  # the slideshow only ever runs in a lit room
                 vol.Required("photo_seconds", default=saver["photo_seconds"]): NumberSelector(
                     NumberSelectorConfig(min=ap.PHOTO_SECONDS_MIN, max=ap.PHOTO_SECONDS_MAX, step=5, mode=NumberSelectorMode.BOX, unit_of_measurement="s")
@@ -248,6 +250,7 @@ class HeliosOptionsFlow(OptionsFlow):
                 "dark_enter": int(round(float(draft.get("dark_enter", ap.SCREENSAVER_DEFAULTS["dark_enter"])))),
                 "dark_exit": int(round(float(draft.get("dark_exit", ap.SCREENSAVER_DEFAULTS["dark_exit"])))),
                 "photos": bool(draft.get("photos", ap.SCREENSAVER_DEFAULTS["photos"])),
+                "notifications_block": bool(draft.get("notifications_block", ap.SCREENSAVER_DEFAULTS["notifications_block"])),
                 "photo_seconds": int(round(float(draft.get("photo_seconds", ap.SCREENSAVER_DEFAULTS["photo_seconds"])))),
                 "photo_dim": int(round(float(draft.get("photo_dim", ap.SCREENSAVER_DEFAULTS["photo_dim"])))),
             }

@@ -27,7 +27,15 @@
           "sendspin_url": "Sendspin address (empty = derived from the Music Assistant address)",
           "diagnostics_url": "Diagnostics address (empty = none)",
           "music_url": "Music Assistant address for the clock (empty = the address the server reports)",
-          "music_token": "Music Assistant token for the clock (empty = the integration mints its own, which a Music Assistant add-on does not allow)"
+          "music_token": "Music Assistant token for the clock (empty = the integration mints its own, which a Music Assistant add-on does not allow)",
+          "screensaver_mode": "Night clock",
+          "idle_seconds": "Show it after this much quiet",
+          "dark_enter": "Dark below this light level",
+          "dark_exit": "Lit at or above this light level",
+          "notifications_block": "A visible warning tile keeps the panel awake",
+          "photos": "Slideshow in a lit room",
+          "photo_seconds": "Seconds per photo",
+          "photo_dim": "Photo dimming in the slideshow"
         }
       },
       "upload": {

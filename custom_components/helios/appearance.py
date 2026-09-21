@@ -23,7 +23,12 @@ SCREENSAVER_DEFAULTS = {
     "photos": False,
     "photo_seconds": 120,
     "photo_dim": 45,
+    # A visible conditional tile holds the panel up. That is right when notifications come and go, and wrong
+    # when one of them stays on for days - then the night clock simply never appears. The house decides.
+    "notifications_block": True,
 }
+# Configurations written before notifications_block existed are still valid; the missing key means True.
+_SCREENSAVER_KEYS_BEFORE_0_11 = set(SCREENSAVER_DEFAULTS) - {"notifications_block"}
 IDLE_MIN, IDLE_MAX = 15, 3600
 LUX_MIN, LUX_MAX = 0, 100
 PHOTO_SECONDS_MIN, PHOTO_SECONDS_MAX = 15, 3600
@@ -96,13 +101,15 @@ def validate_screensaver(value: object) -> dict:
     """Strict like the rest of the contract: the clock is the one allowed to be lenient, not the sender."""
     if not isinstance(value, dict):
         raise ValueError("screensaver must be an object")
-    if set(value) != set(SCREENSAVER_DEFAULTS):
+    if set(value) not in (set(SCREENSAVER_DEFAULTS), _SCREENSAVER_KEYS_BEFORE_0_11):
         raise ValueError("screensaver keys must be " + ", ".join(sorted(SCREENSAVER_DEFAULTS)))
     if value["mode"] not in SCREENSAVER_MODES:
         raise ValueError("screensaver.mode must be off, dark or always")
-    if not isinstance(value["photos"], bool):
-        raise ValueError("screensaver.photos must be true or false")
-    out = {"mode": value["mode"], "photos": value["photos"]}
+    blocks = value.get("notifications_block", SCREENSAVER_DEFAULTS["notifications_block"])
+    for key, flag in (("photos", value["photos"]), ("notifications_block", blocks)):
+        if not isinstance(flag, bool):
+            raise ValueError(f"screensaver.{key} must be true or false")
+    out = {"mode": value["mode"], "photos": value["photos"], "notifications_block": blocks}
     for key, low, high in (
         ("idle_seconds", IDLE_MIN, IDLE_MAX),
         ("dark_enter", LUX_MIN, LUX_MAX),
