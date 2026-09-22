@@ -149,7 +149,7 @@ class HeliosPanel extends HTMLElement {
   }
   _convert() {
     const item = this._page().items.find((i) => i.id === this.state.sel), tile = item && S.toTile(item);
-    if (tile) this._commit(tile);
+    if (tile) { this._commit(tile); this._renderSide(); } // a new type needs a new form
   }
   _addPage() {
     const title = window.prompt('Nazwa strony', `Strona ${this.state.model.pages.length + 1}`);
@@ -266,11 +266,20 @@ class HeliosPanel extends HTMLElement {
     side.innerHTML = `<h3>${def.label}</h3><div id="form"></div>
       <div class="row">${def.legacy && S.toTile(item) ? '<button data-act="convert">Zamień na tile</button>' : ''}<button data-act="delete">Usuń</button><button data-act="close">Zamknij</button></div>`;
     const host = side.querySelector('#form'), schema = S.schemaFor(item.type, item, st.legacyVersion), data = S.toForm(item);
+    // The form outlives single edits, so every commit reads the item as it is now (renamed, converted), never the one it was built for.
     const commit = (value) => {
-      const next = S.fromForm(item.type, { ...data, ...value });
-      if (next.id !== item.id && this._allIds().includes(next.id)) { st.notice = `Powtórzony id: ${next.id}`; this._render(); return; }
+      const current = this._page().items.find((i) => i.id === st.sel);
+      if (!current) return;
+      const domainChanged = current.type === 'tile' && value.entity !== undefined && S.domainOf(value.entity) !== S.domainOf(current.entity);
+      if (domainChanged) value = { ...value, action: S.defaultIntent(S.domainOf(value.entity)) }; // the old intent may not exist on the new domain
+      const next = S.fromForm(current.type, { ...data, ...value });
+      if (next.id !== current.id && this._allIds().includes(next.id)) { st.notice = `Powtórzony id: ${next.id}`; this._render(); return; }
       Object.assign(data, value);
       this._commit(next);
+      if (domainChanged) {
+        if (this._form) { this._form.schema = S.schemaFor(next.type, next, st.legacyVersion); this._form.data = { ...data }; }
+        else this._renderSide();
+      }
     };
     if (st.formsReady && customElements.get('ha-form')) {
       const f = document.createElement('ha-form');
