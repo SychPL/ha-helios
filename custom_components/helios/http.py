@@ -23,6 +23,7 @@ from .const import (
     FLOW_TIMEOUT_SECONDS,
     PAIR_BODY_LIMIT,
     PAIRING_TIMEOUT_SECONDS,
+    PANEL_STATIC_URL,
     PROTOCOL,
     SETUP_TIMEOUT_SECONDS,
     new_domain_data,
@@ -37,13 +38,34 @@ CANCELLED_USERS_TTL_SECONDS = 3600
 
 
 def async_register_views(hass: HomeAssistant) -> None:
-    """Both views, once; called from async_setup and from the config flow (the first pairing runs before async_setup)."""
+    """All views, once; called from async_setup and from the config flow (the first pairing runs before async_setup)."""
     data = hass.data.setdefault(DOMAIN, new_domain_data())
     if data.get("views_registered"):
         return
     hass.http.register_view(HeliosAppearanceView())
     hass.http.register_view(HeliosPairView())
+    hass.http.register_view(HeliosPanelFileView())
     data["views_registered"] = True
+
+
+class HeliosPanelFileView(HomeAssistantView):
+    """The editor panel's two modules, served like any HA frontend asset (no auth: the browser loads them before it has a token).
+
+    A view rather than a static path: static paths are refused once aiohttp has frozen the router (the test harness on Linux
+    does that after the first client), and a view is what the pairing endpoint already relies on. No cache headers, because
+    helios-panel.js imports helios-schema.js by a relative URL that cannot carry the version query.
+    """
+
+    url = f"{PANEL_STATIC_URL}/{{name}}"
+    name = "api:helios:panel"
+    requires_auth = False
+    FILES = ("helios-panel.js", "helios-schema.js")
+
+    async def get(self, request: web.Request, name: str) -> web.StreamResponse:
+        if name not in self.FILES:
+            return web.Response(status=404)
+        path = Path(__file__).parent / "panel" / name  # built only from the allowlisted name, never from the URL text
+        return web.FileResponse(path, headers={"Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache"})
 
 
 class HeliosAppearanceView(HomeAssistantView):

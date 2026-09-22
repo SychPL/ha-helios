@@ -62,7 +62,7 @@ def validate_command(command: str, args: dict) -> str | None:
 
 def new_domain_data() -> dict:
     """The hass.data[DOMAIN] shape; every entry point builds it the same way."""
-    return {"pairing": PairingRegistry(), "entries": {}, "locks": {}, "pairing_active": set(), "cancelled_users": {}, "views_registered": False, "ws_registered": False, "static_registered": False}
+    return {"pairing": PairingRegistry(), "entries": {}, "locks": {}, "pairing_active": set(), "cancelled_users": {}, "views_registered": False, "ws_registered": False}
 
 
 def parse_pair_request(body: object) -> dict | None:

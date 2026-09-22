@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: node --check custom_components/helios/panel/helios-panel.js && node --test tests/panel
+      - run: node --check custom_components/helios/panel/helios-panel.js && node --test tests/panel/schema.test.mjs
   import-check:
     runs-on: ubuntu-latest
     steps:

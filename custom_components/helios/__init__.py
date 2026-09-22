@@ -27,7 +27,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         websocket.async_register(hass)
         data["ws_registered"] = True
     async_register_views(hass)
-    await panel.async_register_static(hass)
     return True
 
 

@@ -132,7 +132,7 @@ administrators.
 ```bash
 pip install -r requirements_test.txt
 python -m pytest tests
-node --test tests/panel   # the editor's model and validator, no npm needed
+node --test tests/panel/schema.test.mjs   # the editor's model and validator, no npm needed
 ```
 
 Python 3.14; `pytest-homeassistant-custom-component` pulls in Home Assistant

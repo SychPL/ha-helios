@@ -1,29 +1,16 @@
-"""The dashboard editor: an admin-only custom panel in the sidebar, served from this integration's own directory.
+"""The dashboard editor: an admin-only custom panel in the sidebar; its modules are served by HeliosPanelFileView (http.py).
 
 The page edits the `helios` section of a storage-mode Lovelace dashboard through the frontend's own `lovelace/config`
-and `lovelace/config/save` commands, so the integration adds no WebSocket command and no HTTP view for it.
+and `lovelace/config/save` commands, so the integration adds no WebSocket command for it.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from homeassistant.components import frontend
-from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.loader import async_get_integration
 
 from .const import DASHBOARD_PATH, DOMAIN, PANEL_STATIC_URL, PANEL_URL_PATH
-
-
-async def async_register_static(hass: HomeAssistant) -> None:
-    """Once per process: static paths cannot be removed. No cache headers: the panel imports helios-schema.js by a relative
-    URL that cannot carry the version query, so an upgrade must never pair a new panel with a cached old module."""
-    data = hass.data[DOMAIN]
-    if data.get("static_registered"):
-        return
-    await hass.http.async_register_static_paths([StaticPathConfig(PANEL_STATIC_URL, str(Path(__file__).parent / "panel"), False)])
-    data["static_registered"] = True
 
 
 async def async_register_panel(hass: HomeAssistant) -> None:
