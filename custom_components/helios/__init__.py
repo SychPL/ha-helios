@@ -12,7 +12,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from . import appearance as ap
-from . import identity, websocket
+from . import identity, panel, websocket
 from .const import DOMAIN, new_domain_data
 from .coordinator import HeliosCoordinator
 from .http import async_register_views
@@ -27,6 +27,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         websocket.async_register(hass)
         data["ws_registered"] = True
     async_register_views(hass)
+    await panel.async_register_static(hass)
     return True
 
 
@@ -55,6 +56,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     data["entries"][entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await panel.async_register_panel(hass)
     return True
 
 
@@ -79,4 +81,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator: HeliosCoordinator | None = hass.data[DOMAIN]["entries"].pop(entry.entry_id, None)
     if coordinator is not None:
         coordinator.send_removed()
+    if not hass.data[DOMAIN]["entries"]:
+        panel.async_remove_panel(hass)  # the sidebar entry goes with the last clock
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

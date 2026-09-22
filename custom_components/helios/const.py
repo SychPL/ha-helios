@@ -18,6 +18,8 @@ FLOW_TIMEOUT_SECONDS = 20
 SETUP_TIMEOUT_SECONDS = 10
 MA_TIMEOUT_SECONDS = 5
 DASHBOARD_PATH = "helios-clock"
+PANEL_URL_PATH = "helios"  # sidebar entry of the dashboard editor; the dashboard itself stays at DASHBOARD_PATH
+PANEL_STATIC_URL = "/helios_static"
 MUSIC_SECTION_REVISION = 2  # bumped whenever a stored MA section has to be re-minted (0.8.0/0.8.1 sections are unusable, SPEC 0.10 pkt 6.2)
 COMMAND_TIMEOUT_SECONDS = 10
 
@@ -60,7 +62,7 @@ def validate_command(command: str, args: dict) -> str | None:
 
 def new_domain_data() -> dict:
     """The hass.data[DOMAIN] shape; every entry point builds it the same way."""
-    return {"pairing": PairingRegistry(), "entries": {}, "locks": {}, "pairing_active": set(), "cancelled_users": {}, "views_registered": False, "ws_registered": False}
+    return {"pairing": PairingRegistry(), "entries": {}, "locks": {}, "pairing_active": set(), "cancelled_users": {}, "views_registered": False, "ws_registered": False, "static_registered": False}
 
 
 def parse_pair_request(body: object) -> dict | None:

@@ -107,17 +107,39 @@ metadata stripped, transparency flattened, bounded to 1600x960, JPEG under
 with an authenticated `GET /api/helios/appearance/<entry_id>/<image_id>`, which
 serves only the current image and only to that clock's user or an administrator.
 
+## Dashboard editor
+
+The sidebar entry **Helios** (administrators only) is a visual editor for the
+clock's layout: a 4x3 canvas, pages, one form per card. Click an empty cell to
+add a card, click a card to edit or delete it. Entity and icon pickers are Home
+Assistant's own (`ha-form`); if they fail to load the panel falls back to plain
+inputs with a datalist of your entities. The editor validates with the clock's
+own rules and wording, so a layout it accepts is a layout the clock accepts.
+
+It edits the `helios` section of a storage-mode dashboard (default
+`helios-clock`, any other from the drop-down) through the frontend's
+`lovelace/config` and `lovelace/config/save` commands; everything else in that
+dashboard is left untouched. Before saving it re-reads the dashboard and
+refuses to overwrite a version changed elsewhere in the meantime. A document in
+schema 2-5 loads as one page and is upgraded to schema 6 on the first save -
+that needs Helios 0.12 on the clock; an older clock rejects the new document
+and keeps its previous layout. The JavaScript is public (no secrets in it); the
+only mutation path is `lovelace/config/save`, which Home Assistant gates to
+administrators.
+
 ## Development
 
 ```bash
 pip install -r requirements_test.txt
 python -m pytest tests
+node --test tests/panel   # the editor's model and validator, no npm needed
 ```
 
 Python 3.14; `pytest-homeassistant-custom-component` pulls in Home Assistant
 2026.8.3. The suite covers the pure helpers plus component tests of pairing,
-identity and the device channel. GitHub Actions runs hassfest, HACS validation,
-those tests and an import check on every push.
+identity, the device channel and the editor panel registration; `node --test`
+covers the editor's validator. GitHub Actions runs hassfest, HACS validation,
+those tests, the node tests and an import check on every push.
 
 Strings live in `strings.json` (English) and `translations/pl.json` (Polish).
 Logs and exception texts are English; entity names come from translation keys,

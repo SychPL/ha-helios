@@ -42,6 +42,12 @@ Ponowne parowanie tego samego zegara odświeża istniejący wpis (nowy token, st
 
 Protokół kanału (`helios/connect`, `helios/state`, `helios/result`) opisuje specyfikacja w repozytorium aplikacji: `docs/SPEC-0.7-home-assistant-integration.md`.
 
+## Edytor dashboardu
+
+Pozycja **Helios** w pasku bocznym (tylko administrator) to wizualny edytor układu zegara: siatka 4×3, strony, formularz na kartę. Kliknij pustą komórkę, aby dodać kartę; kliknij kartę, aby ją edytować lub usunąć. Wybór encji i ikon to formularze HA (`ha-form`); gdy się nie załadują, panel przechodzi na zwykłe pola z listą encji. Edytor sprawdza układ regułami i słowami zegara - to, co przyjmie, przyjmie też zegar.
+
+Edytuje sekcję `helios` pulpitu w trybie storage (domyślnie `helios-clock`, inny z listy) poleceniami frontendu `lovelace/config` i `lovelace/config/save`; reszta pulpitu zostaje nietknięta. Przed zapisem czyta pulpit ponownie i odmawia nadpisania wersji zmienionej w międzyczasie. Dokument w schemacie 2-5 wczytuje się jako jedna strona i przy pierwszym zapisie przechodzi na schemat 6 - wymaga to Heliosa 0.12; starszy zegar odrzuci dokument i zachowa poprzedni układ. JavaScript jest publiczny (bez sekretów); jedyną drogą zapisu jest `lovelace/config/save`, które HA udostępnia tylko administratorom.
+
 ## Wygląd zegara (tło i motyw)
 
 Ustawienia → Urządzenia i usługi → Helios → wybrany zegar → **Konfiguruj**:
