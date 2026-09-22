@@ -69,16 +69,20 @@ class HeliosPanel extends HTMLElement {
     this.state.formsReady = await ensureHaForm();
     this._render();
   }
-  async _fetch() {
-    try { return await this._hass.callWS({ type: 'lovelace/config', url_path: this.state.urlPath, force: true }); }
+  async _fetch(urlPath) {
+    try { return await this._hass.callWS({ type: 'lovelace/config', url_path: urlPath, force: true }); }
     catch (err) { if (err && err.code === 'config_not_found') return {}; throw err; }
   }
   async _loadDashboard() {
     const st = this.state;
     st.sel = null; st.dirty = false; st.stale = false; st.errors = [];
     if (!st.dashboards.some((d) => d.url_path === st.urlPath)) { st.doc = null; st.model = null; st.notice = `Brak pulpitu ${st.urlPath} w trybie storage.`; this._render(); return; }
-    try { st.doc = await this._fetch(); }
+    const urlPath = st.urlPath;
+    let doc;
+    try { doc = await this._fetch(urlPath); }
     catch (err) { st.doc = null; st.model = null; st.notice = 'Nie udało się wczytać pulpitu: ' + (err.message || err.code || err); this._render(); return; }
+    if (st.urlPath !== urlPath) return; // the user moved on to another dashboard while this one loaded
+    st.doc = doc;
     const parsed = S.fromLovelace(st.doc);
     st.model = parsed.model; st.legacyVersion = parsed.legacyVersion; st.notice = parsed.notice;
     st.baseline = JSON.stringify(st.doc.helios ?? null);
@@ -100,18 +104,21 @@ class HeliosPanel extends HTMLElement {
     st.errors = S.validate(st.model);
     if (st.errors.length) { this._render(); return; }
     if (st.legacyVersion != null && !window.confirm(`Dokument w wersji ${st.legacyVersion} zostanie zapisany w wersji 6. Wymaga Heliosa 0.12 - starszy zegar odrzuci go i zachowa poprzedni układ. Zapisać?`)) return;
+    // the target and the document are pinned for the whole save: the selector is disabled meanwhile, and a switch that
+    // slipped through could otherwise write this dashboard's whole config over another one
+    const urlPath = st.urlPath, model = st.model;
     st.saving = true; this._render();
     try {
-      const fresh = await this._fetch();
+      const fresh = await this._fetch(urlPath);
       if (JSON.stringify(fresh.helios ?? null) !== st.baseline) {
         st.doc = fresh; const parsed = S.fromLovelace(fresh); st.model = parsed.model; st.legacyVersion = parsed.legacyVersion;
         st.baseline = JSON.stringify(fresh.helios ?? null); st.sel = null; st.dirty = false; st.stale = false; st.page = 0;
         st.notice = 'Konfiguracja zmieniła się w międzyczasie - wczytano nową wersję, nanieś zmiany ponownie.';
         return;
       }
-      const next = structuredClone(fresh); next.helios = S.toHelios(st.model);
-      await this._hass.callWS({ type: 'lovelace/config/save', url_path: st.urlPath, config: next });
-      const verify = await this._fetch();
+      const next = structuredClone(fresh); next.helios = S.toHelios(model);
+      await this._hass.callWS({ type: 'lovelace/config/save', url_path: urlPath, config: next });
+      const verify = await this._fetch(urlPath);
       st.doc = verify; st.baseline = JSON.stringify(verify.helios ?? null); st.legacyVersion = null; st.dirty = false; st.stale = false;
       st.notice = JSON.stringify(verify.helios) === JSON.stringify(next.helios) ? 'Zapisano - zegar odświeży się sam.' : 'Zapisano, ale odczyt różni się od zapisu - sprawdź edytor tekstowy.';
     } catch (err) { st.notice = 'Zapis nie powiódł się: ' + (err.message || err.code || err); }
@@ -130,10 +137,12 @@ class HeliosPanel extends HTMLElement {
     if (!S.fits(this._page().items, item)) { this.state.notice = `Element ${item.id} nakłada się na inny element`; this._render(); return; }
     this._page().items.push(item); this.state.sel = item.id; this._touch();
   }
+  /** A field edit: the model, the preview and the error list move, the form the user is typing in stays put. */
   _commit(next) {
     const page = this._page(), idx = page.items.findIndex((i) => i.id === this.state.sel);
     if (idx < 0) return;
-    page.items[idx] = next; this.state.sel = next.id; this._touch();
+    page.items[idx] = next; this.state.sel = next.id; this.state.dirty = true; this._validate();
+    this._renderGrid(); this._renderStatus();
   }
   _delete() {
     const page = this._page(); page.items = page.items.filter((i) => i.id !== this.state.sel); this.state.sel = null; this._touch();
@@ -179,7 +188,21 @@ class HeliosPanel extends HTMLElement {
     if (act === 'convert') { this._convert(); return; }
     if (act === 'close') { st.sel = null; this._render(); return; }
   }
-  _onDashboardChange(value) { this.state.urlPath = value; this._loadDashboard(); }
+  _onDashboardChange(value) {
+    if (this.state.saving) return;
+    if (this.state.dirty && !window.confirm('Porzucić niezapisane zmiany?')) { this._render(); return; }
+    this.state.urlPath = value; this._loadDashboard();
+  }
+  _errorsHtml() {
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    return this.state.errors.length ? `<ul class="err">${this.state.errors.map((e) => `<li>${e.page != null ? `strona ${e.page + 1}${e.id ? ` / ${esc(e.id)}` : ''}: ` : ''}${esc(e.msg)}</li>`).join('')}</ul>` : '';
+  }
+  _renderStatus() {
+    const st = this.state, root = this.shadowRoot, errors = root.getElementById('errors'), save = root.getElementById('save'), dirty = root.getElementById('dirty');
+    if (errors) errors.innerHTML = this._errorsHtml();
+    if (save) save.disabled = !st.model || st.saving || st.errors.length > 0 || (!st.dirty && st.legacyVersion == null);
+    if (dirty) dirty.textContent = st.dirty ? 'Niezapisane zmiany' : '';
+  }
 
   // --- rendering ---
   _render() {
@@ -188,11 +211,11 @@ class HeliosPanel extends HTMLElement {
     const options = st.dashboards.map((d) => `<option value="${esc(d.url_path)}" ${d.url_path === st.urlPath ? 'selected' : ''}>${esc(d.title)} (${esc(d.url_path)})</option>`).join('');
     const known = st.dashboards.some((d) => d.url_path === st.urlPath);
     const bar = `<div class="bar">
-      <select id="dash">${options}${known ? '' : `<option value="${esc(st.urlPath)}" selected>${esc(st.urlPath)} (brak)</option>`}</select>
+      <select id="dash" ${st.saving ? 'disabled' : ''}>${options}${known ? '' : `<option value="${esc(st.urlPath)}" selected>${esc(st.urlPath)} (brak)</option>`}</select>
       ${known ? '' : '<button data-act="create">Utwórz pulpit</button>'}
-      <button data-act="reload">Przeładuj</button>
-      <button class="primary" data-act="save" ${!st.model || st.saving || st.errors.length || (!st.dirty && st.legacyVersion == null) ? 'disabled' : ''}>${st.saving ? 'Zapisuję…' : 'Zapisz'}</button>
-      <span class="muted">${st.dirty ? 'Niezapisane zmiany' : ''}</span></div>`;
+      <button data-act="reload" ${st.saving ? 'disabled' : ''}>Przeładuj</button>
+      <button class="primary" id="save" data-act="save" ${!st.model || st.saving || st.errors.length || (!st.dirty && st.legacyVersion == null) ? 'disabled' : ''}>${st.saving ? 'Zapisuję…' : 'Zapisz'}</button>
+      <span class="muted" id="dirty">${st.dirty ? 'Niezapisane zmiany' : ''}</span></div>`;
     const notices = [
       st.stale ? '<div class="notice warn">Zmieniono poza edytorem - Przeładuj, aby zobaczyć aktualny układ.</div>' : '',
       st.notice ? `<div class="notice ${st.legacyVersion != null ? 'warn' : ''}">${esc(st.notice)}</div>` : '',
@@ -201,10 +224,9 @@ class HeliosPanel extends HTMLElement {
     if (!st.model) { root.innerHTML = `<style>${STYLE}</style>${bar}${notices}`; this._wire(); return; }
     const tabs = `<div class="tabs">${st.model.pages.map((p, n) => `<button class="${n === st.page ? 'on' : ''}" data-act="page" data-n="${n}">${esc(p.title || p.id)}</button>`).join('')}
       <button data-act="add-page" ${st.model.pages.length >= S.MAX_PAGES ? 'disabled' : ''}>+ strona</button><button data-act="rename-page">nazwa</button><button data-act="delete-page" ${st.model.pages.length < 2 ? 'disabled' : ''}>usuń stronę</button></div>`;
-    const errors = st.errors.length ? `<ul class="err">${st.errors.map((e) => `<li>${e.page != null ? `strona ${e.page + 1}${e.id ? ` / ${esc(e.id)}` : ''}: ` : ''}${esc(e.msg)}</li>`).join('')}</ul>` : '';
     root.innerHTML = `<style>${STYLE}</style>${bar}${notices}${tabs}
       <div class="work"><div><div class="screen"><div class="top">HELIOS ${st.page === 0 ? '' : '· strona ' + (st.page + 1) + ' (zegar pokazuje stronę 1)'}</div><div class="grid" id="grid"></div></div>
-      <div class="row"><label class="muted">Nowa karta: <select id="addtype">${Object.entries(S.TYPES).filter(([, d]) => !d.legacy).map(([k, d]) => `<option value="${k}" ${(this._addType || 'tile') === k ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}</select> - kliknij pustą komórkę</label></div>${errors}</div>
+      <div class="row"><label class="muted">Nowa karta: <select id="addtype">${Object.entries(S.TYPES).filter(([, d]) => !d.legacy).map(([k, d]) => `<option value="${k}" ${(this._addType || 'tile') === k ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}</select> - kliknij pustą komórkę</label></div><div id="errors">${this._errorsHtml()}</div></div>
       <div class="side" id="side"></div></div>`;
     this._wire();
     this._renderGrid();

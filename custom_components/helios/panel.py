@@ -17,11 +17,12 @@ from .const import DASHBOARD_PATH, DOMAIN, PANEL_STATIC_URL, PANEL_URL_PATH
 
 
 async def async_register_static(hass: HomeAssistant) -> None:
-    """Once per process: static paths cannot be removed. Cache headers on; the module URL carries the version, so an upgrade never serves a stale file."""
+    """Once per process: static paths cannot be removed. No cache headers: the panel imports helios-schema.js by a relative
+    URL that cannot carry the version query, so an upgrade must never pair a new panel with a cached old module."""
     data = hass.data[DOMAIN]
     if data.get("static_registered"):
         return
-    await hass.http.async_register_static_paths([StaticPathConfig(PANEL_STATIC_URL, str(Path(__file__).parent / "panel"), True)])
+    await hass.http.async_register_static_paths([StaticPathConfig(PANEL_STATIC_URL, str(Path(__file__).parent / "panel"), False)])
     data["static_registered"] = True
 
 
