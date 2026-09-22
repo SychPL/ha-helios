@@ -277,7 +277,7 @@ class HeliosPanel extends HTMLElement {
       Object.assign(data, value);
       this._commit(next);
       if (domainChanged) {
-        if (this._form) { this._form.schema = S.schemaFor(next.type, next, st.legacyVersion); this._form.data = { ...data }; }
+        if (this._form) { this._form.schema = S.schemaFor(next.type, next, st.legacyVersion); this._form.data = data; } // the same object the commits mutate: a copy would freeze later edits at this moment
         else this._renderSide();
       }
     };
