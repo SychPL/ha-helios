@@ -443,3 +443,34 @@ async def test_failed_repair_keeps_a_dashboard_assigned_meanwhile(hass, hass_cli
     monkeypatch.setattr(hass.config_entries, "async_reload", failing_reload)
     assert (await post(hass, client, flow_id2, code2)).status == 503
     assert entry.data["user_id"] == old_user and entry.data["dashboard_path"] == "helios-gabinet"
+
+
+async def test_a_new_clock_inherits_a_pasted_music_token(hass, hass_client_no_auth, hass_ws_client, monkeypatch):
+    """The MA add-on mints no clock token, so a second clock takes the token pasted for the first one."""
+    MockConfigEntry(domain=DOMAIN, unique_id="1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", data={"installation_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"},
+                    options={"music_token": "pasted", "music_url": "http://ma.local:8095", "sendspin_url": "", "theme": "warm_graphite"}).add_to_hass(hass)
+    monkeypatch.setattr(identity, "quiet_music_source", lambda hass: ("http://ma-internal:8095", ""))
+    flow_id, code = await start_flow(hass)
+    client = await hass_client_no_auth()
+    body = await (await post(hass, client, flow_id, code)).json()
+    entry = next(e for e in hass.config_entries.async_entries(DOMAIN) if e.unique_id == INSTALLATION)
+    assert dict(entry.options) == {"music_token": "pasted", "music_url": "http://ma.local:8095", "sendspin_url": ""}
+    section = entry.data["music_assistant"]
+    assert section["token"] == "pasted" and section["url"] == "http://ma.local:8095" and section["manual"] is True
+    ws = await hass_ws_client(hass, access_token=body["token"])
+    await ws.send_json({"id": 1, "type": "helios/connect", "protocol": 2, "installation_id": INSTALLATION, "app_version": "0.9.0", "version_code": 28})
+    assert (await ws.receive_json())["success"] is True
+    await hass.async_block_till_done()
+    assert entry.data["music_assistant"] == section, "the first connect keeps the inherited section instead of re-minting"
+
+
+async def test_the_new_entry_gets_the_same_music_options_the_section_was_minted_with(hass, hass_client_no_auth, monkeypatch):
+    """The donor clock may lose its token while the flow finishes; the new entry keeps the snapshot its section came from."""
+    answers = [{"music_token": "pasted", "music_url": "http://ma.local:8095", "sendspin_url": ""}]
+    monkeypatch.setattr(identity, "inherited_music_options", lambda hass: answers.pop(0) if answers else {})
+    monkeypatch.setattr(identity, "quiet_music_source", lambda hass: ("http://ma-internal:8095", ""))
+    flow_id, code = await start_flow(hass)
+    client = await hass_client_no_auth()
+    assert (await post(hass, client, flow_id, code)).status == 200
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    assert entry.options["music_token"] == "pasted" and entry.data["music_assistant"]["token"] == "pasted"

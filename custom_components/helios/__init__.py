@@ -9,6 +9,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 
 from . import appearance as ap
@@ -70,6 +71,7 @@ async def _options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     data = hass.data.setdefault(DOMAIN, new_domain_data())
     data["cancelled_users"].pop(entry.data.get("user_id"), None)
+    ir.async_delete_issue(hass, DOMAIN, f"no_music_{entry.entry_id}")
     data["locks"].pop(entry.data.get("installation_id"), None)
     await identity.async_remove_identity(hass, entry.data.get("user_id"))
     await identity.async_revoke_music_section(hass, entry.data.get("music_assistant"))

@@ -93,7 +93,8 @@ class HeliosConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="reconfigured")
         await self.async_set_unique_id(data["installation_id"])
         self._abort_if_unique_id_configured()
-        result = self.async_create_entry(title=f"Helios {data['installation_id'][:8]}", data=data)
+        # the options the pairing endpoint minted the music section with, so the first connect keeps that section
+        result = self.async_create_entry(title=f"Helios {data['installation_id'][:8]}", data=data, options=(self._pending or {}).get("options") or {})
         self._release()
         return result
 

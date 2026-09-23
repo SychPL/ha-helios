@@ -219,3 +219,31 @@ async def test_changing_the_pasted_token_refreshes_the_section_on_connect(hass, 
     _, events = await connect(ws)
     assert seen == [{"music_token": "new-paste"}], "the options reach the section builder"
     assert events[2]["music_assistant"]["token"] == "new-paste"
+
+
+async def test_a_clock_without_music_while_ma_runs_is_a_repairs_issue(hass, hass_ws_client, monkeypatch):
+    from homeassistant.helpers import issue_registry as ir
+
+    entry, token = await paired(hass)
+    monkeypatch.setattr(identity, "music_source", lambda hass: ("http://ma:8095", "ha-token"))
+    monkeypatch.setattr(identity, "quiet_music_source", lambda hass: ("http://ma:8095", "ha-token"))
+
+    async def refused(hass, installation_id, options=None):
+        return None  # what the MA add-on answers to create_token
+
+    monkeypatch.setattr(identity, "async_create_music_section", refused)
+    ws = await hass_ws_client(hass, access_token=token)
+    result, _ = await connect(ws)
+    assert result["success"]
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"no_music_{entry.entry_id}")
+    assert issue is not None and issue.translation_key == "no_music" and issue.translation_placeholders["name"]
+
+    async def pasted(hass, installation_id, options=None):
+        return {"url": "http://ma:8095", "source_url": "http://ma:8095", "token": "pasted", "minted": 2, "manual": True}
+
+    monkeypatch.setattr(identity, "async_create_music_section", pasted)
+    hass.config_entries.async_update_entry(entry, options={**entry.options, "music_token": "pasted"})
+    ws2 = await hass_ws_client(hass, access_token=token)
+    result, _ = await connect(ws2)
+    assert result["success"]
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"no_music_{entry.entry_id}") is None

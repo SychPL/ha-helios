@@ -93,6 +93,9 @@ described in **[docs/PROTOCOL.md](docs/PROTOCOL.md)**.
   once in Settings -> Devices and services -> Helios -> Configure -> *Music
   Assistant token for the clock*. It is stored as given, never verified, never
   revoked, and changing it refreshes music on the clock's next connect.
+  A clock paired later takes the token already pasted for another clock, so it
+  plays music from the start. A clock left without music while Music Assistant
+  runs shows up in Settings -> Repairs.
 
 ## Clock appearance
 

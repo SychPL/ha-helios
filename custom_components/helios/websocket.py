@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_track_device_registry_updated_event
 
 from . import identity
@@ -116,6 +117,7 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
     coordinator.attach(connection, sub_id)
 
     device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, installation_id)})
+    _music_issue(hass, entry, section, device)
 
     @callback
     def device_updated(event) -> None:
@@ -142,6 +144,17 @@ async def ws_connect(hass: HomeAssistant, connection, msg: dict) -> None:
     )
     coordinator.send_appearance()
     coordinator.send_connection(identity.connection_payload(hass, dict(entry.data), dict(entry.options)))
+
+
+@callback
+def _music_issue(hass: HomeAssistant, entry, section: dict | None, device) -> None:
+    """A clock without music while Music Assistant runs is a Repairs item, not just a log line (the add-on mints no token)."""
+    issue_id = f"no_music_{entry.entry_id}"
+    if section is None and identity.quiet_music_source(hass) is not None:
+        name = (device.name_by_user or device.name) if device else entry.title
+        ir.async_create_issue(hass, DOMAIN, issue_id, is_fixable=False, severity=ir.IssueSeverity.WARNING, translation_key="no_music", translation_placeholders={"name": name})
+    else:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "helios/state", vol.Required("state"): dict})

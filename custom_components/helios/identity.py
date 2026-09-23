@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import MA_TIMEOUT_SECONDS, MUSIC_SECTION_REVISION, dashboard_path_for, sendspin_url_for
+from .const import DOMAIN, MA_TIMEOUT_SECONDS, MUSIC_SECTION_REVISION, dashboard_path_for, sendspin_url_for
 
 _LOGGER = logging.getLogger(__name__)
 TOKEN_LIFETIME = timedelta(days=3650)
@@ -211,6 +211,22 @@ async def async_revoke_music_section(hass: HomeAssistant, section: dict | None) 
             await client.auth.logout()
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Could not revoke the clock's Music Assistant token: %s", type(err).__name__)
+
+
+MUSIC_OPTION_KEYS = ("music_token", "music_url", "sendspin_url")
+
+
+def inherited_music_options(hass: HomeAssistant) -> dict:
+    """The Music Assistant options of a clock that has a pasted token, for a clock being paired now.
+
+    With the MA add-on the integration cannot mint a clock token at all (SPEC 0.10 pkt 6.2), so without this every
+    further clock paired silently without music. The pasted token is the user's own and is never revoked, so sharing
+    it between clocks changes nothing about its lifetime.
+    """
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if (entry.options.get("music_token") or "").strip():
+            return {key: entry.options.get(key, "") for key in MUSIC_OPTION_KEYS}
+    return {}
 
 
 def preferred_pipeline(hass: HomeAssistant) -> str | None:

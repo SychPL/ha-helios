@@ -117,5 +117,11 @@
         "name": "Clock speaker"
       }
     }
+  },
+  "issues": {
+    "no_music": {
+      "title": "{name} has no music",
+      "description": "Music Assistant is running, but the clock **{name}** could not get a Music Assistant token, so it cannot play music or appear as a player. A Music Assistant add-on does not let the integration create one.\n\nIn Music Assistant create a long-lived token, then paste it into this clock's options (Settings > Devices & services > Helios > Configure) in the Music Assistant token field. Clocks paired later reuse a pasted token automatically."
+    }
   }
 }
