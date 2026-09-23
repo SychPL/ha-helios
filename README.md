@@ -116,8 +116,14 @@ Assistant's own (`ha-form`); if they fail to load the panel falls back to plain
 inputs with a datalist of your entities. The editor validates with the clock's
 own rules and wording, so a layout it accepts is a layout the clock accepts.
 
-It edits the `helios` section of a storage-mode dashboard (default
-`helios-clock`, any other from the drop-down) through the frontend's
+The editor has one tab per paired clock, named after its Home Assistant device,
+and each tab edits the dashboard that clock shows. Every clock starts on the
+shared `helios-clock`; **Own dashboard** on a tab copies the current document
+into a new hidden dashboard (`helios-<clock name>`) and switches that clock to
+it on the spot, without a restart. The path is stored with the clock's config
+entry and sent to the app in the `connection` event.
+
+It edits the `helios` section of a storage-mode dashboard through the frontend's
 `lovelace/config` and `lovelace/config/save` commands; everything else in that
 dashboard is left untouched. Before saving it re-reads the dashboard and
 refuses to overwrite a version changed elsewhere in the meantime. A document in

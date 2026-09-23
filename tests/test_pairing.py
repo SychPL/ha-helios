@@ -420,3 +420,26 @@ async def test_legacy_entry_keeps_its_human_user(hass, hass_admin_user):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.config_entries.async_remove(entry.entry_id)
     assert await hass.auth.async_get_user(hass_admin_user.id) is not None
+
+
+async def test_failed_repair_keeps_a_dashboard_assigned_meanwhile(hass, hass_client_no_auth, monkeypatch):
+    """SPEC 0.16: the rollback restores only what pairing wrote, so a dashboard switch acknowledged during the reload stays."""
+    flow_id, code = await start_flow(hass)
+    client = await hass_client_no_auth()
+    await (await post(hass, client, flow_id, code)).json()
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    old_user = entry.data["user_id"]
+    flow_id2, code2 = await start_flow(hass)
+    real_reload = hass.config_entries.async_reload
+    calls = []
+
+    async def failing_reload(entry_id):
+        calls.append(entry_id)
+        if len(calls) == 1:
+            hass.config_entries.async_update_entry(entry, data={**entry.data, "dashboard_path": "helios-gabinet"})  # the panel's set_dashboard
+            return False
+        return await real_reload(entry_id)
+
+    monkeypatch.setattr(hass.config_entries, "async_reload", failing_reload)
+    assert (await post(hass, client, flow_id2, code2)).status == 503
+    assert entry.data["user_id"] == old_user and entry.data["dashboard_path"] == "helios-gabinet"

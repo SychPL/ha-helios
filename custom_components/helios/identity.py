@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import DASHBOARD_PATH, MA_TIMEOUT_SECONDS, MUSIC_SECTION_REVISION, sendspin_url_for
+from .const import MA_TIMEOUT_SECONDS, MUSIC_SECTION_REVISION, dashboard_path_for, sendspin_url_for
 
 _LOGGER = logging.getLogger(__name__)
 TOKEN_LIFETIME = timedelta(days=3650)
@@ -228,4 +228,4 @@ def connection_payload(hass: HomeAssistant, entry_data: dict, options: dict) -> 
     if section:
         url = (options.get("music_url") or section["url"]).rstrip("/")  # the option wins when the server reports an address the clock cannot use
         music = {"url": url, "token": section["token"], "sendspin_url": options.get("sendspin_url") or sendspin_url_for(url)}
-    return {"type": "connection", "pipeline": preferred_pipeline(hass), "dashboard_path": DASHBOARD_PATH, "music_assistant": music, "diagnostics_url": options.get("diagnostics_url") or None}
+    return {"type": "connection", "pipeline": preferred_pipeline(hass), "dashboard_path": dashboard_path_for(entry_data), "music_assistant": music, "diagnostics_url": options.get("diagnostics_url") or None}

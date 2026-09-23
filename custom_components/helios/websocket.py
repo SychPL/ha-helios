@@ -9,11 +9,12 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_device_registry_updated_event
 
 from . import identity
-from .const import DOMAIN, MUSIC_SECTION_REVISION, PROTOCOL, PROTOCOLS
+from .const import DOMAIN, MUSIC_SECTION_REVISION, PROTOCOL, PROTOCOLS, dashboard_path_for, valid_dashboard_path
 from .coordinator import HeliosCoordinator
 
 
@@ -167,8 +168,52 @@ def ws_result(hass: HomeAssistant, connection, msg: dict) -> None:
     connection.send_result(msg["id"])
 
 
+@websocket_api.websocket_command({vol.Required("type"): "helios/clocks"})
+@websocket_api.require_admin
+@callback
+def ws_clocks(hass: HomeAssistant, connection, msg: dict) -> None:
+    """SPEC 0.16: one row per paired clock for the panel's tabs - its HA device name, area and the dashboard it shows."""
+    devices, areas = dr.async_get(hass), ar.async_get(hass)
+    entries = hass.data.get(DOMAIN, {}).get("entries", {})
+    clocks = []
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        device = devices.async_get_device(identifiers={(DOMAIN, entry.data.get("installation_id"))})
+        area = areas.async_get_area(device.area_id) if device and device.area_id else None
+        coordinator = entries.get(entry.entry_id)
+        clocks.append({
+            "entry_id": entry.entry_id,
+            "name": (device.name_by_user or device.name) if device else entry.title,
+            "area": area.name if area else None,
+            "dashboard_path": dashboard_path_for(dict(entry.data)),
+            "online": coordinator is not None and coordinator.connection is not None,
+        })
+    clocks.sort(key=lambda c: (c["name"] or "").casefold())
+    connection.send_result(msg["id"], {"clocks": clocks})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "helios/clock/set_dashboard", vol.Required("entry_id"): cv.string, vol.Required("dashboard_path"): cv.string})
+@websocket_api.require_admin
+@callback
+def ws_set_dashboard(hass: HomeAssistant, connection, msg: dict) -> None:
+    """SPEC 0.16: point one clock at another dashboard; the options listener pushes the new path to the clock."""
+    entry = hass.config_entries.async_get_entry(msg["entry_id"])
+    if entry is None or entry.domain != DOMAIN:
+        connection.send_error(msg["id"], "not_found", "Unknown clock")
+        return
+    path = msg["dashboard_path"]
+    if not valid_dashboard_path(path):
+        connection.send_error(msg["id"], "invalid_format", "Dashboard path must be a lowercase slug with a hyphen, at most 64 characters")
+        return
+    # entry.data, not options: the options form writes its whole dict back after its step returns, outside any lock;
+    # read-modify-write here has no await in between, so it cannot interleave with ws_connect's data update either
+    hass.config_entries.async_update_entry(entry, data={**entry.data, "dashboard_path": path})
+    connection.send_result(msg["id"], {"dashboard_path": path})
+
+
 @callback
 def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_connect)
     websocket_api.async_register_command(hass, ws_state)
     websocket_api.async_register_command(hass, ws_result)
+    websocket_api.async_register_command(hass, ws_clocks)
+    websocket_api.async_register_command(hass, ws_set_dashboard)

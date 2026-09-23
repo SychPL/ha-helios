@@ -25,6 +25,7 @@ COMMAND_TIMEOUT_SECONDS = 10
 
 _INSTALLATION_RE = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 _CODE_RE = re.compile(r"^[0-9]{6}$")
+_DASHBOARD_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")  # what lovelace/dashboards/create takes: a slug with a hyphen
 
 COMMANDS: dict[str, dict[str, tuple[int, int]]] = {
     "lamp.turn_on": {},
@@ -58,6 +59,16 @@ def validate_command(command: str, args: dict) -> str | None:
     if set(args) - set(spec):
         return "invalid_args"
     return None
+
+
+def valid_dashboard_path(value: object) -> bool:
+    return isinstance(value, str) and len(value) <= 64 and _DASHBOARD_RE.fullmatch(value) is not None
+
+
+def dashboard_path_for(entry_data: dict) -> str:
+    """SPEC 0.16: the clock's own dashboard (kept in entry.data, which the options form never rewrites), or the shared default when unset or invalid."""
+    value = entry_data.get("dashboard_path")
+    return value if valid_dashboard_path(value) else DASHBOARD_PATH
 
 
 def new_domain_data() -> dict:

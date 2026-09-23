@@ -159,3 +159,14 @@ test('size limit', () => {
   for (let n = 0; n < 6; n++) m.pages.push({ id: 'p' + n, items: Array.from({ length: 12 }, (_, i) => tile('t' + n + '-' + i, 'sensor.' + 'a'.repeat(600), (i % 4) + 1, Math.floor(i / 4) + 1, { attribute: 'a'.repeat(64), visible_when: { entity: 'binary_sensor.' + 'b'.repeat(600), state: 'x'.repeat(60) } })) });
   rejects(m, 'Sekcja helios przekracza 64 KiB');
 });
+
+test('dashboardPath: helios- plus slug, Polish letters folded, free suffix, valid Lovelace url_path (SPEC 0.16)', () => {
+  const lovelace = /^[a-z0-9]+(-[a-z0-9]+)+$/;
+  assert.equal(S.dashboardPath('zegar gabinet'), 'helios-zegar-gabinet');
+  assert.equal(S.dashboardPath('Łazienka Żółta'), 'helios-lazienka-zolta');
+  assert.equal(S.dashboardPath('Helios 0f3c1b2a'), 'helios-0f3c1b2a');
+  assert.equal(S.dashboardPath('Helios'), 'helios-zegar');
+  assert.equal(S.dashboardPath(''), 'helios-karta');
+  assert.equal(S.dashboardPath('zegar gabinet', ['helios-zegar-gabinet', 'helios-zegar-gabinet-2']), 'helios-zegar-gabinet-3');
+  for (const n of ['zegar_sypialnia', '  x  ', 'Ä'.repeat(80), '---']) { const p = S.dashboardPath(n); assert.match(p, lovelace, n); assert.ok(p.length <= 64, n); }
+});

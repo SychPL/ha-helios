@@ -1,7 +1,7 @@
 """The dashboard editor: an admin-only custom panel in the sidebar; its modules are served by HeliosPanelFileView (http.py).
 
 The page edits the `helios` section of a storage-mode Lovelace dashboard through the frontend's own `lovelace/config`
-and `lovelace/config/save` commands, so the integration adds no WebSocket command for it.
+and `lovelace/config/save` commands; its clock tabs come from `helios/clocks` and `helios/clock/set_dashboard` (SPEC 0.16).
 """
 
 from __future__ import annotations

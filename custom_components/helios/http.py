@@ -193,7 +193,8 @@ async def _pair(hass: HomeAssistant, data: dict, pending: dict, parsed: dict) ->
             finally:
                 if not ok:
                     # the restoring reload is part of the transaction (criterion 15: a working old entry before the answer), with its own bound
-                    hass.config_entries.async_update_entry(existing, data=previous)
+                    # only the fields this pairing wrote go back: a dashboard assigned meanwhile (SPEC 0.16) must survive the rollback
+                    hass.config_entries.async_update_entry(existing, data={**existing.data, **{key: previous.get(key) for key in entry_data}})
                     try:
                         async with asyncio.timeout(ROLLBACK_TIMEOUT_SECONDS):  # its own bound, also after the transaction timeout already fired
                             restored = await hass.config_entries.async_reload(existing.entry_id)

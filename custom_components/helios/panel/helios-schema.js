@@ -45,6 +45,14 @@ export function slug(text, taken = []) {
   return out;
 }
 
+/** SPEC 0.16: a free Lovelace url_path for a clock's own dashboard - "helios-" + slug of its name, -2, -3... when taken. */
+export function dashboardPath(name, taken = []) {
+  const base = 'helios-' + slug(name, []).replace(/^helios(-|$)/, '').replace(/^$/, 'zegar');
+  let out = base, n = 2;
+  while (taken.includes(out)) out = `${base}-${n++}`;
+  return out;
+}
+
 // --- document <-> model ---
 // model = {pages: [{id, title?, items: [helios item objects]}]}; items are the wire objects themselves.
 export function fromLovelace(doc) {

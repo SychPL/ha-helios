@@ -184,6 +184,14 @@ retry, because the outcome on the device is unknown.
 Both `helios/state` and `helios/result` require an active `helios/connect`
 subscription on the same connection, otherwise they fail with `unauthorized`.
 
+### `helios/clocks` and `helios/clock/set_dashboard` (administrators)
+
+Used by the editor panel, never by a clock (a clock's user is not an administrator).
+`helios/clocks` returns `{"clocks": [{"entry_id", "name", "area", "dashboard_path", "online"}]}`,
+one row per paired clock. `helios/clock/set_dashboard` with `entry_id` and `dashboard_path` (a lowercase
+slug with a hyphen, at most 64 characters) stores the path with the clock's entry; the next `connection`
+event, sent right away to a connected clock, carries it. Errors: `not_found`, `invalid_format`, `unauthorized`.
+
 ## 3. Versioning
 
 `PROTOCOL` in `const.py` is the revision this integration speaks, `PROTOCOLS`

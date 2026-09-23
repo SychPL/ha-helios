@@ -1,4 +1,5 @@
-// Helios dashboard editor: an admin custom panel that edits the `helios` section of a storage-mode Lovelace dashboard.
+// Helios dashboard editor: an admin custom panel that edits the `helios` section of a storage-mode Lovelace dashboard,
+// one tab per paired clock (SPEC 0.16): each tab edits the dashboard that clock shows.
 // Vanilla ES module, no build step. The model, validation and forms live in helios-schema.js (node-testable).
 import * as S from './helios-schema.js';
 
@@ -15,6 +16,8 @@ button:disabled{opacity:.5;cursor:default}
 .notice.error{background:var(--error-color,#db4437);color:#fff}
 .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
 .tabs button.on{background:var(--primary-color);color:var(--text-primary-color,#fff)}
+.clocks button .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--disabled-text-color,#999)}
+.clocks button .dot.online{background:var(--success-color,#43a047)}
 .work{display:grid;grid-template-columns:minmax(320px,2fr) minmax(280px,1fr);gap:16px}
 @media (max-width:820px){.work{grid-template-columns:1fr}}
 .screen{aspect-ratio:800/480;background:#1c1b19;border-radius:12px;padding:8px;display:grid;grid-template-rows:44px 1fr;gap:8px;min-width:0}
@@ -41,7 +44,7 @@ class HeliosPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this.state = { dashboards: [], urlPath: null, doc: null, baseline: null, model: null, legacyVersion: null, notice: null, page: 0, sel: null, dirty: false, stale: false, saving: false, formsReady: null, errors: [] };
+    this.state = { clocks: [], clockId: null, dashboards: [], urlPath: null, doc: null, baseline: null, model: null, legacyVersion: null, notice: null, page: 0, sel: null, dirty: false, stale: false, saving: false, formsReady: null, errors: [] };
     this._hass = null; this._loaded = false; this._unsub = null;
     this.shadowRoot.addEventListener('click', (e) => this._click(e));
     this._beforeUnload = (e) => { if (this.state.dirty) { e.preventDefault(); e.returnValue = ''; } };
@@ -64,14 +67,45 @@ class HeliosPanel extends HTMLElement {
       const list = await h.callWS({ type: 'lovelace/dashboards/list' });
       st.dashboards = list.filter((d) => d.mode === 'storage');
     } catch (err) { st.dashboards = []; }
+    await this._loadClocks();
     if (!this._unsub) this._unsub = await h.connection.subscribeEvents((ev) => { if (ev.data && ev.data.url_path === st.urlPath && !st.saving) { st.stale = true; this._render(); } }, 'lovelace_updated');
     await this._loadDashboard();
     this.state.formsReady = await ensureHaForm();
     this._render();
   }
-  async _fetch(urlPath) {
+  /** The panel's tabs: one per clock, each pointing at the dashboard that clock shows; the chosen tab survives a refresh. */
+  async _loadClocks() {
+    const st = this.state;
+    try { st.clocks = (await this._hass.callWS({ type: 'helios/clocks' })).clocks; }
+    catch (err) { st.clocks = []; st.notice = 'Nie udało się pobrać listy zegarów: ' + (err.message || err.code || err); }
+    const clock = st.clocks.find((c) => c.entry_id === st.clockId) || st.clocks[0];
+    if (clock) { st.clockId = clock.entry_id; st.urlPath = clock.dashboard_path; }
+  }
+  _clock() { return this.state.clocks.find((c) => c.entry_id === this.state.clockId) || null; }
+  _sharing() { const c = this._clock(); return c ? this.state.clocks.filter((o) => o.dashboard_path === c.dashboard_path && o.entry_id !== c.entry_id) : []; }
+  /** Gives the current clock a copy of the dashboard it shares: create, copy, repoint the clock (SPEC 0.16 pkt 4). */
+  async _ownDashboard() {
+    const st = this.state, clock = this._clock();
+    if (!clock || st.dirty || st.saving) return;
+    st.saving = true; this._render();
+    try {
+      const list = await this._hass.callWS({ type: 'lovelace/dashboards/list' });
+      const urlPath = S.dashboardPath(clock.name, list.map((d) => d.url_path));
+      const source = await this._fetch(st.urlPath, true); // fresh from HA, never the editor's model
+      await this._hass.callWS({ type: 'lovelace/dashboards/create', url_path: urlPath, title: `Helios - ${clock.name}`, icon: 'mdi:clock-digital', show_in_sidebar: false, require_admin: true, mode: 'storage' });
+      await this._hass.callWS({ type: 'lovelace/config/save', url_path: urlPath, config: structuredClone(source) });
+      await this._hass.callWS({ type: 'helios/clock/set_dashboard', entry_id: clock.entry_id, dashboard_path: urlPath });
+      // HA acknowledged the switch: from here the editor targets the new document whatever the refreshes below do
+      clock.dashboard_path = urlPath; st.urlPath = urlPath;
+      if (!st.dashboards.some((d) => d.url_path === urlPath)) st.dashboards.push({ url_path: urlPath, title: `Helios - ${clock.name}`, mode: 'storage' });
+      await this._loadDashboard();
+      st.notice = st.model ? `${clock.name} ma teraz własny dashboard ${urlPath} - zegar przełączy się sam.` : `${clock.name} przełączony na ${urlPath}, ale nie udało się go wczytać - użyj Przeładuj.`;
+    } catch (err) { st.notice = 'Nie udało się utworzyć własnego dashboardu: ' + (err.message || err.code || err); }
+    finally { st.saving = false; this._render(); }
+  }
+  async _fetch(urlPath, strict = false) {
     try { return await this._hass.callWS({ type: 'lovelace/config', url_path: urlPath, force: true }); }
-    catch (err) { if (err && err.code === 'config_not_found') return {}; throw err; }
+    catch (err) { if (!strict && err && err.code === 'config_not_found') return {}; throw err; } // strict: a copy of nothing is an error, not an empty layout
   }
   async _loadDashboard() {
     const st = this.state;
@@ -139,6 +173,7 @@ class HeliosPanel extends HTMLElement {
   }
   /** A field edit: the model, the preview and the error list move, the form the user is typing in stays put. */
   _commit(next) {
+    if (this.state.saving) return;
     const page = this._page(), idx = page.items.findIndex((i) => i.id === this.state.sel);
     if (idx < 0) return;
     page.items[idx] = next; this.state.sel = next.id; this.state.dirty = true; this._validate();
@@ -175,9 +210,12 @@ class HeliosPanel extends HTMLElement {
     const el = e.composedPath().find((n) => n instanceof HTMLElement && n.dataset && n.dataset.act);
     if (!el) return;
     const act = el.dataset.act, st = this.state;
+    if (st.saving) return; // a copy or a save in flight: the model it will replace must not take edits
     if (act === 'reload') { this._loadDashboard(); return; }
     if (act === 'save') { this._save(); return; }
     if (act === 'create') { this._createDashboard(); return; }
+    if (act === 'clock') { this._onClockChange(el.dataset.id); return; }
+    if (act === 'own') { this._ownDashboard(); return; }
     if (act === 'page') { st.page = Number(el.dataset.n); st.sel = null; this._render(); return; }
     if (act === 'add-page') { this._addPage(); return; }
     if (act === 'rename-page') { this._renamePage(); return; }
@@ -188,10 +226,11 @@ class HeliosPanel extends HTMLElement {
     if (act === 'convert') { this._convert(); return; }
     if (act === 'close') { st.sel = null; this._render(); return; }
   }
-  _onDashboardChange(value) {
-    if (this.state.saving) return;
-    if (this.state.dirty && !window.confirm('Porzucić niezapisane zmiany?')) { this._render(); return; }
-    this.state.urlPath = value; this._loadDashboard();
+  _onClockChange(entryId) {
+    const st = this.state, clock = st.clocks.find((c) => c.entry_id === entryId);
+    if (st.saving || !clock || entryId === st.clockId) return;
+    if (st.dirty && !window.confirm('Porzucić niezapisane zmiany?')) return;
+    st.clockId = entryId; st.urlPath = clock.dashboard_path; st.notice = null; this._loadDashboard();
   }
   _errorsHtml() {
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -202,24 +241,28 @@ class HeliosPanel extends HTMLElement {
     if (errors) errors.innerHTML = this._errorsHtml();
     if (save) save.disabled = !st.model || st.saving || st.errors.length > 0 || (!st.dirty && st.legacyVersion == null);
     if (dirty) dirty.textContent = st.dirty ? 'Niezapisane zmiany' : '';
+    const own = root.getElementById('own');
+    if (own) { own.disabled = st.saving || st.dirty; own.title = st.dirty ? 'Najpierw zapisz albo przeładuj' : 'Kopia bieżącego dokumentu tylko dla tego zegara'; }
   }
 
   // --- rendering ---
   _render() {
     const st = this.state, root = this.shadowRoot;
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const options = st.dashboards.map((d) => `<option value="${esc(d.url_path)}" ${d.url_path === st.urlPath ? 'selected' : ''}>${esc(d.title)} (${esc(d.url_path)})</option>`).join('');
-    const known = st.dashboards.some((d) => d.url_path === st.urlPath);
-    const bar = `<div class="bar">
-      <select id="dash" ${st.saving ? 'disabled' : ''}>${options}${known ? '' : `<option value="${esc(st.urlPath)}" selected>${esc(st.urlPath)} (brak)</option>`}</select>
+    const known = st.dashboards.some((d) => d.url_path === st.urlPath), clock = this._clock(), sharing = this._sharing();
+    const clocks = `<div class="tabs clocks">${st.clocks.map((c) => `<button class="${c.entry_id === st.clockId ? 'on' : ''}" data-act="clock" data-id="${esc(c.entry_id)}" ${st.saving ? 'disabled' : ''} title="${c.online ? 'połączony' : 'rozłączony'}"><span class="dot ${c.online ? 'online' : ''}"></span>${esc(c.name)}${c.area ? ` · ${esc(c.area)}` : ''}</button>`).join('')}</div>`;
+    const where = clock ? `<div class="muted">Dashboard: ${esc(st.urlPath)}${sharing.length ? ` · wspólny z: ${sharing.map((c) => esc(c.name)).join(', ')}` : ''}</div>` : '';
+    const bar = `${clocks}<div class="bar">
       ${known ? '' : '<button data-act="create">Utwórz pulpit</button>'}
+      ${clock && known && sharing.length ? `<button id="own" data-act="own" ${st.saving || st.dirty ? 'disabled' : ''} title="${st.dirty ? 'Najpierw zapisz albo przeładuj' : 'Kopia bieżącego dokumentu tylko dla tego zegara'}">Własny dashboard</button>` : ''}
       <button data-act="reload" ${st.saving ? 'disabled' : ''}>Przeładuj</button>
       <button class="primary" id="save" data-act="save" ${!st.model || st.saving || st.errors.length || (!st.dirty && st.legacyVersion == null) ? 'disabled' : ''}>${st.saving ? 'Zapisuję…' : 'Zapisz'}</button>
-      <span class="muted" id="dirty">${st.dirty ? 'Niezapisane zmiany' : ''}</span></div>`;
+      <span class="muted" id="dirty">${st.dirty ? 'Niezapisane zmiany' : ''}</span></div>${where}`;
     const notices = [
       st.stale ? '<div class="notice warn">Zmieniono poza edytorem - Przeładuj, aby zobaczyć aktualny układ.</div>' : '',
       st.notice ? `<div class="notice ${st.legacyVersion != null ? 'warn' : ''}">${esc(st.notice)}</div>` : '',
       st.formsReady === false ? '<div class="notice">Formularze HA niedostępne - używam prostych pól.</div>' : '',
+      st.clocks.length === 0 ? '<div class="notice">Brak sparowanych zegarów.</div>' : '',
     ].join('');
     if (!st.model) { root.innerHTML = `<style>${STYLE}</style>${bar}${notices}`; this._wire(); return; }
     const tabs = `<div class="tabs">${st.model.pages.map((p, n) => `<button class="${n === st.page ? 'on' : ''}" data-act="page" data-n="${n}">${esc(p.title || p.id)}</button>`).join('')}
@@ -233,8 +276,6 @@ class HeliosPanel extends HTMLElement {
     this._renderSide();
   }
   _wire() {
-    const dash = this.shadowRoot.getElementById('dash');
-    if (dash) dash.addEventListener('change', (e) => this._onDashboardChange(e.target.value));
     const addtype = this.shadowRoot.getElementById('addtype');
     if (addtype) addtype.addEventListener('change', (e) => { this._addType = e.target.value; });
   }
