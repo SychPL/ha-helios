@@ -268,7 +268,7 @@ class HeliosPanel extends HTMLElement {
     const tabs = `<div class="tabs">${st.model.pages.map((p, n) => `<button class="${n === st.page ? 'on' : ''}" data-act="page" data-n="${n}">${esc(p.title || p.id)}</button>`).join('')}
       <button data-act="add-page" ${st.model.pages.length >= S.MAX_PAGES ? 'disabled' : ''}>+ strona</button><button data-act="rename-page">nazwa</button><button data-act="delete-page" ${st.model.pages.length < 2 ? 'disabled' : ''}>usuń stronę</button></div>`;
     root.innerHTML = `<style>${STYLE}</style>${bar}${notices}${tabs}
-      <div class="work"><div><div class="screen"><div class="top">HELIOS ${st.page === 0 ? '' : '· strona ' + (st.page + 1) + ' (zegar pokazuje stronę 1)'}</div><div class="grid" id="grid"></div></div>
+      <div class="work"><div><div class="screen"><div class="top">HELIOS ${st.page === 0 ? '' : '· strona ' + (st.page + 1) + ' z ' + st.model.pages.length + ' (na zegarze: przesuń palcem)'}</div><div class="grid" id="grid"></div></div>
       <div class="row"><label class="muted">Nowa karta: <select id="addtype">${Object.entries(S.TYPES).filter(([, d]) => !d.legacy).map(([k, d]) => `<option value="${k}" ${(this._addType || 'tile') === k ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}</select> - kliknij pustą komórkę</label></div><div id="errors">${this._errorsHtml()}</div></div>
       <div class="side" id="side"></div></div>`;
     this._wire();
