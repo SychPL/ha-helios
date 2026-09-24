@@ -126,6 +126,10 @@ into a new hidden dashboard (`helios-<clock name>`) and switches that clock to
 it on the spot, without a restart. The path is stored with the clock's config
 entry and sent to the app in the `connection` event.
 
+The card list includes **Energy (PV, house, battery)** (`energy`, Helios 0.14 or newer on the clock): PV
+production and house load on top, the battery charge large under it; without a battery sensor the
+production / load pair is the value.
+
 It edits the `helios` section of a storage-mode dashboard through the frontend's
 `lovelace/config` and `lovelace/config/save` commands; everything else in that
 dashboard is left untouched. Before saving it re-reads the dashboard and

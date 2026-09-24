@@ -291,9 +291,10 @@ class HeliosPanel extends HTMLElement {
       const def = S.TYPES[i.type], e = this._hass && i.entity ? this._hass.states[i.entity] : null;
       const title = i.title || (e && e.attributes.friendly_name) || (def ? def.label.split(' ')[0] : i.type);
       const icon = i.icon ? (i.icon.startsWith('mdi:') ? i.icon : 'mdi:' + i.icon) : (i.type === 'tile' ? S.DOMAIN_ICON[S.domainOf(i.entity)] : S.LEGACY_DEFAULT_ICON[i.type] ? 'mdi:' + S.LEGACY_DEFAULT_ICON[i.type] : null);
-      const value = i.type === 'clock' ? '12:00' : i.type === 'music' ? '—' : i.type === 'cover_group' ? 'A / B' : e ? `${e.state}${e.attributes.unit_of_measurement ? ' ' + e.attributes.unit_of_measurement : ''}` : (i.entity || '');
+      const energy = i.type === 'energy' ? S.energyPreview(i, (this._hass && this._hass.states) || {}) : null;
+      const value = energy ? energy.value : i.type === 'clock' ? '12:00' : i.type === 'music' ? '—' : i.type === 'cover_group' ? 'A / B' : e ? `${e.state}${e.attributes.unit_of_measurement ? ' ' + e.attributes.unit_of_measurement : ''}` : (i.entity || '');
       return `<div class="card ${i.id === st.sel ? 'on' : ''} ${bad.has(i.id) ? 'bad' : ''}" data-act="card" data-id="${esc(i.id)}" style="grid-column:${i.column} / span ${i.width};grid-row:${i.row} / span ${i.height}">
-        <div class="t">${icon ? `<ha-icon icon="${esc(icon)}"></ha-icon>` : ''}<span>${esc(title)}</span></div><div class="v">${esc(value)}</div>${i.visible_when ? '<div class="t">warunkowy</div>' : ''}</div>`;
+        <div class="t">${icon ? `<ha-icon icon="${esc(icon)}"></ha-icon>` : ''}<span>${esc(energy ? energy.title : title)}</span></div><div class="v">${esc(value)}</div>${i.visible_when ? '<div class="t">warunkowy</div>' : ''}</div>`;
     });
     grid.innerHTML = cells.join('') + cards.join('');
   }
@@ -324,7 +325,7 @@ class HeliosPanel extends HTMLElement {
     };
     if (st.formsReady && customElements.get('ha-form')) {
       const f = document.createElement('ha-form');
-      f.hass = this._hass; f.schema = schema; f.data = data; f.computeLabel = (s) => S.LABELS[s.name] || s.name;
+      f.hass = this._hass; f.schema = schema; f.data = data; f.computeLabel = (s) => s.label || S.LABELS[s.name] || s.name;
       f.addEventListener('value-changed', (e) => { e.stopPropagation(); commit(e.detail.value); });
       host.appendChild(f); this._form = f;
     } else host.appendChild(fallbackForm(schema, data, this._hass, commit));
@@ -350,7 +351,7 @@ function fallbackForm(schema, data, hass, commit) {
   const entities = Object.keys((hass && hass.states) || {}).sort();
   let listId = 0;
   for (const s of flat) {
-    const label = document.createElement('label'); label.className = 'f'; label.textContent = S.LABELS[s.name] || s.name; box.appendChild(label);
+    const label = document.createElement('label'); label.className = 'f'; label.textContent = s.label || S.LABELS[s.name] || s.name; box.appendChild(label);
     let input;
     const sel = s.selector || {};
     if (sel.select) { input = document.createElement('select'); input.innerHTML = '<option value=""></option>' + sel.select.options.map((o) => `<option value="${o.value}">${o.label}</option>`).join(''); input.value = data[s.name] ?? ''; }

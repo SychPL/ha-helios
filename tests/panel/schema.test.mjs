@@ -170,3 +170,37 @@ test('dashboardPath: helios- plus slug, Polish letters folded, free suffix, vali
   assert.equal(S.dashboardPath('zegar gabinet', ['helios-zegar-gabinet', 'helios-zegar-gabinet-2']), 'helios-zegar-gabinet-3');
   for (const n of ['zegar_sypialnia', '  x  ', 'Ä'.repeat(80), '---']) { const p = S.dashboardPath(n); assert.match(p, lovelace, n); assert.ok(p.length <= 64, n); }
 });
+
+test('energy: PV, required house load, optional battery - the clock\'s rules and words (SPEC 0.17)', () => {
+  const energy = (extra = {}) => ({ pages: [{ id: 'main', items: [item('energia', 'energy', 4, 3, 1, 1, { entity: 'sensor.pv_power', load_entity: 'sensor.house_load', ...extra })] }] });
+  assert.deepEqual(msgs(energy()), []);
+  assert.deepEqual(msgs(energy({ battery_entity: 'sensor.battery_soc' })), []);
+  const noLoad = energy(); delete noLoad.pages[0].items[0].load_entity;
+  assert.deepEqual(msgs(noLoad), ['Wymagane pole load_entity']);
+  assert.deepEqual(msgs(energy({ load_entity: 'switch.house' })), ['load_entity wymaga encji sensor']);
+  assert.deepEqual(msgs(energy({ battery_entity: 'battery.x' })), ['battery_entity wymaga encji sensor']);
+  assert.deepEqual(msgs(energy({ entity: 'light.pv' })), ['Element energia wymaga encji z domeny sensor']);
+  assert.deepEqual(msgs(energy({ tap_action: { action: 'toggle' } })), ['Pole niedozwolone dla typu energy: tap_action', 'Pole niedozwolone dla typu energy: tap_action']);
+  // the form round-trips all three sensors and labels the PV one
+  const form = S.toForm(energy({ battery_entity: 'sensor.battery_soc' }).pages[0].items[0]);
+  assert.deepEqual(S.fromForm('energy', form), energy({ battery_entity: 'sensor.battery_soc' }).pages[0].items[0]);
+  const schema = S.schemaFor('energy', form, null);
+  assert.equal(schema.find((f) => f.name === 'entity').label, 'Moc z PV (sensor)');
+  assert.ok(schema.find((f) => f.name === 'load_entity').required && !schema.find((f) => f.name === 'battery_entity').required);
+});
+
+test('energy: field shapes as DashboardSpec.string() and the preview as the clock draws it (SPEC 0.17)', () => {
+  const energy = (extra = {}) => ({ pages: [{ id: 'main', items: [item('energia', 'energy', 4, 3, 1, 1, { entity: 'sensor.pv', load_entity: 'sensor.load', ...extra })] }] });
+  assert.deepEqual(msgs(energy({ battery_entity: null })), ['Nieprawidłowe pole battery_entity']);
+  assert.deepEqual(msgs(energy({ load_entity: null })), ['Nieprawidłowe pole load_entity']);
+  assert.deepEqual(msgs(energy({ load_entity: ['sensor.load'] })), ['Nieprawidłowe pole load_entity']);
+  assert.deepEqual(msgs(energy({ load_entity: '   ' })), ['Nieprawidłowe pole load_entity']);
+  assert.deepEqual(msgs(energy({ load_entity: 'sensor.' + 'x'.repeat(122) })), ['Nieprawidłowe pole load_entity']);
+  const st = (state, unit) => ({ state, attributes: unit ? { unit_of_measurement: unit } : {} });
+  const states = { 'sensor.pv': st('1504', 'W'), 'sensor.load': st('698.4', 'W'), 'sensor.bat': st('68', '%') };
+  const withBattery = { entity: 'sensor.pv', load_entity: 'sensor.load', battery_entity: 'sensor.bat' };
+  assert.deepEqual(S.energyPreview(withBattery, states), { title: '1504 / 698,4 W', value: '68 %' });
+  assert.deepEqual(S.energyPreview({ entity: 'sensor.pv', load_entity: 'sensor.load' }, states), { title: 'PV', value: '1504 / 698,4 W' });
+  assert.deepEqual(S.energyPreview(withBattery, { ...states, 'sensor.load': st('0.7', 'kW') }).title, '1504 W / 0,7 kW');
+  assert.deepEqual(S.energyPreview(withBattery, { 'sensor.pv': st('1504', 'W'), 'sensor.bat': st('unavailable', '%') }), { title: '1504 W / —', value: '—' });
+});

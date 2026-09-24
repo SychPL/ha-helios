@@ -14,13 +14,14 @@ export const TYPES = {
   tile: { label: 'Kafelek (dowolna encja)', fields: ['entity', 'icon', 'attribute', 'tap_action', 'confirmation'], entityDomain: '' },
   music: { label: 'Muzyka', fields: ['icon'], entityDomain: null, singleton: true },
   cover_group: { label: 'Dwie rolety', fields: ['covers', 'icon'], entityDomain: null },
+  energy: { label: 'Energia (PV, dom, bateria)', fields: ['entity', 'load_entity', 'battery_entity', 'icon'], entityDomain: 'sensor' },
   entity: { label: 'Encja (wersja 2-5)', fields: ['entity', 'attribute', 'icon', 'off_entity', 'tap_action', 'confirmation'], entityDomain: '', legacy: true },
   light: { label: 'Światło (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'light', legacy: true, action: 'toggle' },
   cover: { label: 'Roleta (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'cover', legacy: true, action: 'controls' },
   garage: { label: 'Brama (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'cover', legacy: true, action: 'close' },
 };
 export const DOMAIN_ICON = { light: 'mdi:lightbulb', switch: 'mdi:toggle-switch', input_boolean: 'mdi:toggle-switch', fan: 'mdi:fan', cover: 'mdi:window-shutter', lock: 'mdi:lock', sensor: 'mdi:eye', binary_sensor: 'mdi:radiobox-blank', climate: 'mdi:thermostat', script: 'mdi:script-text', scene: 'mdi:palette', input_button: 'mdi:gesture-tap-button', button: 'mdi:gesture-tap-button', media_player: 'mdi:cast', weather: 'mdi:weather-partly-cloudy' };
-export const LEGACY_DEFAULT_ICON = { entity: 'information', light: 'lightbulb', cover: 'window-shutter', garage: 'garage-open', music: 'music', cover_group: 'window-shutter' };
+export const LEGACY_DEFAULT_ICON = { energy: 'solar-power', entity: 'information', light: 'lightbulb', cover: 'window-shutter', garage: 'garage-open', music: 'music', cover_group: 'window-shutter' };
 
 // --- intents (ActionPolicy) ---
 const SWITCH_DOMAINS = ['light', 'switch', 'input_boolean', 'fan'], RUN_DOMAINS = ['script', 'scene', 'input_button', 'button'];
@@ -148,6 +149,11 @@ export function validate(model) {
       if (i.off_entity != null && !/^light\.[a-z0-9_]+$/.test(i.off_entity)) e('off_entity wymaga encji z domeny light');
       if ((i.forecast_entity != null) !== (i.forecast_when != null)) e('weather: forecast_entity i forecast_when występują razem');
       if (i.forecast_entity != null && !/^sensor\.[a-z0-9_]+$/.test(i.forecast_entity)) e('forecast_entity wymaga encji sensor');
+      if (i.type === 'energy') { // SPEC 0.17, DashboardSpec.item: the house load is required, the battery optional, both sensors
+        const load = field(i, 'load_entity', 128, true, e), battery = field(i, 'battery_entity', 128, false, e);
+        if (load != null && !/^sensor\.[a-z0-9_]+$/.test(load)) e('load_entity wymaga encji sensor');
+        if (battery != null && !/^sensor\.[a-z0-9_]+$/.test(battery)) e('battery_entity wymaga encji sensor');
+      }
       if (i.forecast_when != null) when(i.forecast_when, 'forecast_when', e);
       if (i.visible_when != null) when(i.visible_when, 'visible_when', e);
       if (i.type === 'cover_group') {
@@ -184,6 +190,24 @@ export function validate(model) {
   if (JSON.stringify(toHelios(model)).length > MAX_BYTES) push(null, null, 'Sekcja helios przekracza 64 KiB');
   return errors;
 }
+/** DashboardSpec.string(): absent = missing (an error only when required); present but null, not a string, blank or too long = invalid. */
+function field(i, key, max, required, e) {
+  if (!Object.prototype.hasOwnProperty.call(i, key) || i[key] === undefined) { if (required) e(`Wymagane pole ${key}`); return null; }
+  const v = i[key];
+  if (typeof v !== 'string' || !v.trim() || v.length > max) { e(`Nieprawidłowe pole ${key}`); return null; }
+  return v;
+}
+/** The clock's energy tile (CardBodies.energy) for the editor preview: {title, value}; `states` is hass.states. */
+export function energyPreview(item, states) {
+  const unit = (e) => (e && e.attributes && e.attributes.unit_of_measurement) || '';
+  const known = (e) => e && e.state !== 'unknown' && e.state !== 'unavailable';
+  const num = (e, u) => { if (!known(e)) return '—'; const v = Number(e.state); const t = Number.isFinite(v) ? (Math.round(v * 10) / 10).toString().replace('.', ',') : e.state; return u ? `${t} ${u}` : t; };
+  const pv = states[item.entity], house = states[item.load_entity], pu = unit(pv), hu = unit(house);
+  const pair = pu === hu ? `${num(pv, '')} / ${num(house, '')}${pu ? ' ' + pu : ''}` : `${num(pv, pu)} / ${num(house, hu)}`;
+  if (!item.battery_entity) return { title: item.title || 'PV', value: pair };
+  const b = states[item.battery_entity];
+  return { title: pair, value: num(b, unit(b)) };
+}
 function when(w, key, e) {
   if (typeof w !== 'object' || w === null) { e(`${key} musi być obiektem`); return; }
   if (typeof w.entity !== 'string' || !ENTITY_RE.test(w.entity)) e(`Nieprawidłowa encja ${key}`);
@@ -206,7 +230,7 @@ export function fromForm(type, data) {
   const def = TYPES[type], item = { id: data.id, type, column: data.column, row: data.row, width: data.width, height: data.height };
   const text = (k) => (typeof data[k] === 'string' && data[k].trim() ? data[k].trim() : undefined);
   if (text('title')) item.title = text('title');
-  for (const k of ['entity', 'temperature_entity', 'forecast_entity', 'attribute', 'off_entity', 'icon']) if (def.fields.includes(k) && text(k)) item[k] = text(k);
+  for (const k of ['entity', 'load_entity', 'battery_entity', 'temperature_entity', 'forecast_entity', 'attribute', 'off_entity', 'icon']) if (def.fields.includes(k) && text(k)) item[k] = text(k);
   if (def.fields.includes('forecast_when') && (text('forecast_when_entity') || text('forecast_when_state'))) item.forecast_when = { entity: text('forecast_when_entity') || '', state: text('forecast_when_state') || '' };
   if (text('visible_entity') || text('visible_state')) item.visible_when = { entity: text('visible_entity') || '', state: text('visible_state') || '' };
   if (type === 'tile') { const action = data.action || defaultIntent(domainOf(item.entity)); if (action !== defaultIntent(domainOf(item.entity)) || data.action === 'none') item.tap_action = { action }; }
@@ -226,7 +250,8 @@ export function schemaFor(type, item, legacyVersion) {
     { name: 'width', required: true, selector: { number: { min: 1, max: COLUMNS, mode: 'box' } } },
     { name: 'height', required: true, selector: { number: { min: 1, max: ROWS, mode: 'box' } } },
   ] });
-  if (def.entityDomain !== null) s.push({ name: 'entity', required: true, selector: { entity: def.entityDomain ? { domain: def.entityDomain } : {} } });
+  if (def.entityDomain !== null) s.push({ name: 'entity', required: true, selector: { entity: def.entityDomain ? { domain: def.entityDomain } : {} }, ...(type === 'energy' ? { label: 'Moc z PV (sensor)' } : {}) });
+  if (def.fields.includes('load_entity')) { s.push({ name: 'load_entity', required: true, selector: { entity: { domain: 'sensor' } } }); s.push({ name: 'battery_entity', selector: { entity: { domain: 'sensor' } } }); }
   if (def.fields.includes('temperature_entity')) s.push({ name: 'temperature_entity', selector: { entity: { domain: 'sensor' } } });
   if (def.fields.includes('forecast_entity')) {
     s.push({ name: 'forecast_entity', selector: { entity: { domain: 'sensor' } } });
@@ -245,4 +270,4 @@ export function schemaFor(type, item, legacyVersion) {
   s.push({ name: 'visible_state', selector: { text: {} } });
   return s;
 }
-export const LABELS = { id: 'Identyfikator', title: 'Tytuł', column: 'Kolumna', row: 'Wiersz', width: 'Szerokość', height: 'Wysokość', entity: 'Encja', temperature_entity: 'Czujnik temperatury', forecast_entity: 'Prognoza na jutro (sensor)', forecast_when_entity: 'Tryb prognozy: encja', forecast_when_state: 'Tryb prognozy: stan', attribute: 'Atrybut zamiast stanu', off_entity: 'Światła do zgaszenia (light)', icon: 'Ikona', action: 'Dotknięcie', confirm_enabled: 'Pytaj przed wykonaniem', confirm_text: 'Treść pytania', cover1_entity: 'Roleta A: encja', cover1_title: 'Roleta A: nazwa', cover2_entity: 'Roleta B: encja', cover2_title: 'Roleta B: nazwa', visible_entity: 'Widoczny, gdy encja', visible_state: 'ma stan' };
+export const LABELS = { load_entity: 'Zużycie domu (sensor)', battery_entity: 'Bateria w % (opcjonalnie)', id: 'Identyfikator', title: 'Tytuł', column: 'Kolumna', row: 'Wiersz', width: 'Szerokość', height: 'Wysokość', entity: 'Encja', temperature_entity: 'Czujnik temperatury', forecast_entity: 'Prognoza na jutro (sensor)', forecast_when_entity: 'Tryb prognozy: encja', forecast_when_state: 'Tryb prognozy: stan', attribute: 'Atrybut zamiast stanu', off_entity: 'Światła do zgaszenia (light)', icon: 'Ikona', action: 'Dotknięcie', confirm_enabled: 'Pytaj przed wykonaniem', confirm_text: 'Treść pytania', cover1_entity: 'Roleta A: encja', cover1_title: 'Roleta A: nazwa', cover2_entity: 'Roleta B: encja', cover2_title: 'Roleta B: nazwa', visible_entity: 'Widoczny, gdy encja', visible_state: 'ma stan' };
