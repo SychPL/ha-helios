@@ -130,6 +130,9 @@ The card list includes **Energy (PV, house, battery)** (`energy`, Helios 0.14 or
 production and house load on top, the battery charge large under it; without a battery sensor the
 production / load pair is the value.
 
+**Thermostat** (`climate`, Helios 0.16 or newer): the measured temperature large, the setpoint under it; on the
+clock a tap opens the full control panel (setpoint, mode, preset, fan, swing).
+
 It edits the `helios` section of a storage-mode dashboard through the frontend's
 `lovelace/config` and `lovelace/config/save` commands; everything else in that
 dashboard is left untouched. Before saving it re-reads the dashboard and

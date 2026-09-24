@@ -204,3 +204,19 @@ test('energy: field shapes as DashboardSpec.string() and the preview as the cloc
   assert.deepEqual(S.energyPreview(withBattery, { ...states, 'sensor.load': st('0.7', 'kW') }).title, '1504 W / 0,7 kW');
   assert.deepEqual(S.energyPreview(withBattery, { 'sensor.pv': st('1504', 'W'), 'sensor.bat': st('unavailable', '%') }), { title: '1504 W / —', value: '—' });
 });
+
+test('climate: a climate entity only, icon optional, preview as the clock draws the tile (SPEC 0.19)', () => {
+  const doc = (extra = {}) => ({ pages: [{ id: 'main', items: [item('t', 'climate', 3, 1, 1, 1, { entity: 'climate.salon', ...extra })] }] });
+  assert.deepEqual(msgs(doc()), []);
+  assert.deepEqual(msgs(doc({ icon: 'mdi:radiator' })), []);
+  assert.deepEqual(msgs(doc({ entity: 'sensor.x' })), ['Element t wymaga encji z domeny climate']);
+  assert.deepEqual(msgs(doc({ tap_action: { action: 'toggle' } })), ['Pole niedozwolone dla typu climate: tap_action', 'Pole niedozwolone dla typu climate: tap_action']);
+  const st = (state, attributes) => ({ 'climate.salon': { state, attributes } });
+  const i = { entity: 'climate.salon' };
+  assert.deepEqual(S.climatePreview(i, st('heat', { current_temperature: 23, temperature: 20.5, friendly_name: 'Salon' })), { title: 'Salon', value: '23,0°', detail: 'Zadana 20,5°' });
+  assert.deepEqual(S.climatePreview(i, st('off', { current_temperature: 22, temperature: 24 })).detail, 'Wyłączony');
+  assert.deepEqual(S.climatePreview(i, st('heat', { temperature: 21 })).value, '—');
+  assert.deepEqual(S.climatePreview(i, st('unavailable', {})), { title: 'climate.salon', value: '—', detail: 'Brak połączenia' });
+  const f = S.toForm(doc().pages[0].items[0]);
+  assert.deepEqual(S.fromForm('climate', f), doc().pages[0].items[0]);
+});

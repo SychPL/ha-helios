@@ -14,6 +14,7 @@ export const TYPES = {
   tile: { label: 'Kafelek (dowolna encja)', fields: ['entity', 'icon', 'attribute', 'tap_action', 'confirmation'], entityDomain: '' },
   music: { label: 'Muzyka', fields: ['icon'], entityDomain: null, singleton: true },
   cover_group: { label: 'Dwie rolety', fields: ['covers', 'icon'], entityDomain: null },
+  climate: { label: 'Termostat', fields: ['entity', 'icon'], entityDomain: 'climate' },
   energy: { label: 'Energia (PV, dom, bateria)', fields: ['entity', 'load_entity', 'battery_entity', 'icon'], entityDomain: 'sensor' },
   entity: { label: 'Encja (wersja 2-5)', fields: ['entity', 'attribute', 'icon', 'off_entity', 'tap_action', 'confirmation'], entityDomain: '', legacy: true },
   light: { label: 'Światło (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'light', legacy: true, action: 'toggle' },
@@ -196,6 +197,16 @@ function field(i, key, max, required, e) {
   const v = i[key];
   if (typeof v !== 'string' || !v.trim() || v.length > max) { e(`Nieprawidłowe pole ${key}`); return null; }
   return v;
+}
+/** The clock's climate tile (CardBodies.climate, SPEC 0.19) for the preview: measured temperature, "Zadana 20,5°" under it. */
+export function climatePreview(item, states) {
+  const e = states[item.entity], a = (e && e.attributes) || {};
+  const known = e && e.state !== 'unknown' && e.state !== 'unavailable';
+  const deg = (v, one) => { const n = Number(v); if (v == null || !Number.isFinite(n)) return null; const t = one ? n.toFixed(1) : String(Math.round(n * 10) / 10); return t.replace('.', ',') + '°'; };
+  const title = item.title || a.friendly_name || item.entity;
+  if (!known) return { title, value: '—', detail: 'Brak połączenia' };
+  const target = deg(a.temperature);
+  return { title, value: deg(a.current_temperature, true) || '—', detail: e.state === 'off' ? 'Wyłączony' : target ? 'Zadana ' + target : e.state };
 }
 /** The clock's energy tile (CardBodies.energy) for the editor preview: {title, value}; `states` is hass.states. */
 export function energyPreview(item, states) {

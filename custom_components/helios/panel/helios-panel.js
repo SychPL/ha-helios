@@ -291,7 +291,8 @@ class HeliosPanel extends HTMLElement {
       const def = S.TYPES[i.type], e = this._hass && i.entity ? this._hass.states[i.entity] : null;
       const title = i.title || (e && e.attributes.friendly_name) || (def ? def.label.split(' ')[0] : i.type);
       const icon = i.icon ? (i.icon.startsWith('mdi:') ? i.icon : 'mdi:' + i.icon) : (i.type === 'tile' ? S.DOMAIN_ICON[S.domainOf(i.entity)] : S.LEGACY_DEFAULT_ICON[i.type] ? 'mdi:' + S.LEGACY_DEFAULT_ICON[i.type] : null);
-      const energy = i.type === 'energy' ? S.energyPreview(i, (this._hass && this._hass.states) || {}) : null;
+      const hs = (this._hass && this._hass.states) || {};
+      const energy = i.type === 'energy' ? S.energyPreview(i, hs) : i.type === 'climate' ? S.climatePreview(i, hs) : null;
       const value = energy ? energy.value : i.type === 'clock' ? '12:00' : i.type === 'music' ? '—' : i.type === 'cover_group' ? 'A / B' : e ? `${e.state}${e.attributes.unit_of_measurement ? ' ' + e.attributes.unit_of_measurement : ''}` : (i.entity || '');
       return `<div class="card ${i.id === st.sel ? 'on' : ''} ${bad.has(i.id) ? 'bad' : ''}" data-act="card" data-id="${esc(i.id)}" style="grid-column:${i.column} / span ${i.width};grid-row:${i.row} / span ${i.height}">
         <div class="t">${icon ? `<ha-icon icon="${esc(icon)}"></ha-icon>` : ''}<span>${esc(energy ? energy.title : title)}</span></div><div class="v">${esc(value)}</div>${i.visible_when ? '<div class="t">warunkowy</div>' : ''}</div>`;
