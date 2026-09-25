@@ -220,3 +220,77 @@ test('climate: a climate entity only, icon optional, preview as the clock draws 
   const f = S.toForm(doc().pages[0].items[0]);
   assert.deepEqual(S.fromForm('climate', f), doc().pages[0].items[0]);
 });
+
+test('alerts: sources, sizes and the stand-in card - the clock\'s rules and words (SPEC 0.20)', () => {
+  const src = (flag, extra = {}) => ({ title: flag, entity: `sensor.${flag}`, when: { entity: `binary_sensor.${flag}_pokaz`, state: 'on' }, ...extra });
+  const alerts = (extra = {}, w = 2, h = 1) => ({ pages: [{ id: 'main', items: [item('uwagi', 'alerts', 1, 1, w, h, { sources: [src('garaz'), src('swiatla', { off_entity: 'light.grupa', icon: 'mdi:lightbulb' })], ...extra })] }] });
+  assert.deepEqual(msgs(alerts()), []);
+  assert.deepEqual(msgs(alerts({}, 1, 1)), []);
+  assert.deepEqual(msgs(alerts({}, 1, 2)), []);
+  assert.deepEqual(msgs(alerts({}, 2, 2)), ['Kafelek alerts ma rozmiar 1x1, 1x2 albo 2x1']);
+  assert.deepEqual(msgs(alerts({ sources: [] })), ['alerts wymaga od 1 do 12 pozycji sources']);
+  assert.deepEqual(msgs(alerts({ sources: [src('a'), src('a')] })), ['sources: powtórzony warunek binary_sensor.a_pokaz = on']);
+  assert.deepEqual(msgs(alerts({ sources: [src('a', { off_entity: 'switch.x' })] })), ['off_entity wymaga encji z domeny light']);
+  assert.deepEqual(msgs(alerts({ sources: [src('a', { show_since: 'tak' })] })), ['show_since musi być boolean']);
+  assert.deepEqual(msgs(alerts({ sources: [src('a', { kolor: 'red' })] })), ['Nieznane pole sources: kolor']);
+  assert.deepEqual(msgs(alerts({ sources: [src('a', { when: { entity: 'binary_sensor.a', state: 'unavailable' } })] })), ['Brak danych nie może oznaczać ostrzeżenia']);
+  const noWhen = src('a'); delete noWhen.when;
+  assert.deepEqual(msgs(alerts({ sources: [noWhen] })), ['when musi być obiektem']);
+  assert.deepEqual(msgs(alerts({ empty: { type: 'energy', entity: 'sensor.pv', load_entity: 'sensor.dom' } })), []);
+  assert.deepEqual(msgs(alerts({ empty: { type: 'music' } })), ['empty: dozwolone typy energy, climate, weather, clock, tile']);
+  assert.deepEqual(msgs(alerts({ empty: { type: 'clock', column: 3 } })), ['empty: pole column bierze się z kafelka alerts']);
+  assert.deepEqual(msgs(alerts({ empty: { type: 'energy', entity: 'sensor.pv' } })), ['Wymagane pole load_entity'], 'the stand-in is checked as a card of its own');
+  assert.deepEqual(msgs(alerts({ entity: 'sensor.x' })), ['Pole niedozwolone dla typu alerts: entity', 'Pole niedozwolone dla typu alerts: entity']);
+  // the form edits sources flat and gives the wire shape back unchanged
+  const wire = alerts({ empty: { type: 'clock' } }).pages[0].items[0];
+  wire.sources[0].show_since = false;
+  const back = S.fromForm('alerts', S.toForm(wire));
+  assert.deepEqual(back, wire);
+  // preview: the clock's three states
+  const now = '2026-09-25T10:00:00+00:00', older = '2026-09-25T08:00:00+00:00';
+  const i = alerts().pages[0].items[0];
+  assert.equal(S.alertsPreview(i, {}).value, '- · Brak danych');
+  assert.equal(S.alertsPreview(i, { 'binary_sensor.garaz_pokaz': { state: 'off' }, 'binary_sensor.swiatla_pokaz': { state: 'off' } }).value, '0 · Brak uwag');
+  assert.equal(S.alertsPreview(i, { 'binary_sensor.garaz_pokaz': { state: 'on', last_changed: older }, 'binary_sensor.swiatla_pokaz': { state: 'on', last_changed: now } }).value, '2 · swiatla +1');
+});
+
+test('alerts: source fields mirror the clock exactly (types, nulls, lengths, aliases, untrimmed state)', () => {
+  const one = (s) => ({ pages: [{ id: 'main', items: [item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'A', entity: 'sensor.a', when: { entity: 'binary_sensor.a', state: 'on' }, ...s }] })] }] });
+  assert.deepEqual(msgs(one({ icon: 'lightbulb' })), [], 'a legacy name is an alias on the clock');
+  assert.deepEqual(msgs(one({ off_entity: null })), ['Nieprawidłowe pole off_entity']);
+  assert.deepEqual(msgs(one({ off_entity: ['light.a'] })), ['Nieprawidłowe pole off_entity']);
+  assert.deepEqual(msgs(one({ show_since: null })), ['show_since musi być boolean']);
+  assert.deepEqual(msgs(one({ when: { entity: 'binary_sensor.a', state: 'on', extra: 1 } })), ['Nieznane pole when: extra']);
+  assert.deepEqual(msgs(one({ when: { entity: 'binary_sensor.a', state: 'x'.repeat(65) } })), ['Nieprawidłowe pole state']);
+  const f = S.toForm(one({ when: { entity: 'binary_sensor.a', state: ' on ' } }).pages[0].items[0]);
+  assert.equal(S.fromForm('alerts', f).sources[0].when.state, ' on ');
+  const i = one({}).pages[0].items[0]; i.sources.push({ title: 'B', entity: 'sensor.b', when: { entity: 'binary_sensor.b', state: 'on' } });
+  assert.equal(S.alertsPreview(i, { 'binary_sensor.a': { state: 'on' } }).value, '1 · A · Brak danych: 1');
+});
+
+test('alerts: broken input stays visible to validation and never breaks the form', () => {
+  const card = (extra) => item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'A', entity: 'sensor.a', when: { entity: 'binary_sensor.a', state: 'on' } }], ...extra });
+  assert.doesNotThrow(() => S.toForm(card({ sources: {} })));
+  assert.doesNotThrow(() => S.toForm(card({ sources: [null] })));
+  const f = S.toForm(card({})); f.empty_card = 'oops';
+  const back = S.fromForm('alerts', f);
+  assert.equal(back.empty, 'oops');
+  assert.deepEqual(msgs({ pages: [{ id: 'main', items: [back] }] }), ['empty musi być obiektem']);
+  const typed = S.fromForm('alerts', { ...S.toForm(card({})), sources: [null] });
+  assert.deepEqual(typed.sources, [null]);
+  assert.deepEqual(msgs({ pages: [{ id: 'main', items: [typed] }] }), ['sources: pozycja musi być obiektem']);
+});
+
+test('an object field present as null is refused, as on the clock (also inside a stand-in card)', () => {
+  const m = { pages: [{ id: 'main', items: [tile('t', 'light.a', 1, 1, { tap_action: null })] }] };
+  assert.deepEqual(msgs(m), ['tap_action musi być obiektem']);
+  const a = { pages: [{ id: 'main', items: [item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'A', entity: 'sensor.a', when: { entity: 'binary_sensor.a', state: 'on' } }], empty: { type: 'tile', entity: 'sensor.a', tap_action: null } })] }] };
+  assert.deepEqual(msgs(a), ['tap_action musi być obiektem']);
+});
+
+test('wrong types in object fields, a null title and unknown confirmation keys are refused like on the clock', () => {
+  const one = (extra) => msgs({ pages: [{ id: 'main', items: [tile('t', 'light.a', 1, 1, extra)] }] });
+  assert.deepEqual(one({ tap_action: false }), ['tap_action musi być obiektem']);
+  assert.deepEqual(one({ title: null }), ['Nieprawidłowe pole title']);
+  assert.deepEqual(one({ confirmation: { enabled: true, unexpected: 1 } }), ['Nieznane pole confirmation: unexpected']);
+});

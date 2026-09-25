@@ -16,6 +16,7 @@ export const TYPES = {
   cover_group: { label: 'Dwie rolety', fields: ['covers', 'icon'], entityDomain: null },
   climate: { label: 'Termostat', fields: ['entity', 'icon'], entityDomain: 'climate' },
   energy: { label: 'Energia (PV, dom, bateria)', fields: ['entity', 'load_entity', 'battery_entity', 'icon'], entityDomain: 'sensor' },
+  alerts: { label: 'Uwagi (ostrzeżenia)', fields: ['sources', 'empty'], entityDomain: null },
   entity: { label: 'Encja (wersja 2-5)', fields: ['entity', 'attribute', 'icon', 'off_entity', 'tap_action', 'confirmation'], entityDomain: '', legacy: true },
   light: { label: 'Światło (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'light', legacy: true, action: 'toggle' },
   cover: { label: 'Roleta (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'cover', legacy: true, action: 'controls' },
@@ -80,7 +81,8 @@ export function clone(o) { return JSON.parse(JSON.stringify(o)); }
 export function emptyItem(type, cell, taken, entity) {
   const item = { id: slug(TYPES[type].label.split(' ')[0], taken), type, column: cell.column, row: cell.row, width: 1, height: 1 };
   if (type === 'clock') { item.width = 2; item.height = 2; item.title = 'Dom'; }
-  if (type === 'weather') { item.width = 2; }
+  if (type === 'weather' || type === 'alerts') { item.width = 2; }
+  if (type === 'alerts') item.sources = [];
   if (type === 'cover_group') item.covers = [{ entity: '', title: 'Roleta A' }, { entity: '', title: 'Roleta B' }];
   if (TYPES[type].entityDomain !== null) item.entity = entity || '';
   return item;
@@ -139,7 +141,6 @@ export function validate(model) {
         if (i.column + i.width - 1 > COLUMNS || i.row + i.height - 1 > ROWS) e(`Element ${i.id} wychodzi poza siatkę`);
         else for (let r = i.row; r < i.row + i.height; r++) for (let c = i.column; c < i.column + i.width; c++) { const key = `${c},${r}`; if (used.has(key)) { e(`Element ${i.id} nakłada się na inny element`); r = ROWS + 1; break; } used.add(key); }
       }
-      if (i.title != null && (typeof i.title !== 'string' || !i.title.trim() || i.title.length > 40)) e('Nieprawidłowe pole title');
       const domainLabel = def.entityDomain === '' ? i.type : def.entityDomain;
       if (def.entityDomain !== null) {
         if (typeof i.entity !== 'string' || !ENTITY_RE.test(i.entity) || (def.entityDomain && !i.entity.startsWith(def.entityDomain + '.'))) e(`Element ${i.id} wymaga encji z domeny ${domainLabel}`);
@@ -155,6 +156,11 @@ export function validate(model) {
         if (load != null && !/^sensor\.[a-z0-9_]+$/.test(load)) e('load_entity wymaga encji sensor');
         if (battery != null && !/^sensor\.[a-z0-9_]+$/.test(battery)) e('battery_entity wymaga encji sensor');
       }
+      // present as null is present on the clock (JSONObject.has), and then not an object
+      for (const k of ['tap_action', 'confirmation', 'visible_when', 'forecast_when']) if (k in i && (typeof i[k] !== 'object' || i[k] === null || Array.isArray(i[k]))) e(`${k} musi być obiektem`);
+      if ('title' in i && (typeof i.title !== 'string' || !i.title.trim() || i.title.length > 40)) e('Nieprawidłowe pole title');
+      if (i.confirmation && typeof i.confirmation === 'object') for (const k of Object.keys(i.confirmation)) if (k !== 'enabled' && k !== 'text') e(`Nieznane pole confirmation: ${k}`);
+      if (i.type === 'alerts') alerts(i, e);
       if (i.forecast_when != null) when(i.forecast_when, 'forecast_when', e);
       if (i.visible_when != null) when(i.visible_when, 'visible_when', e);
       if (i.type === 'cover_group') {
@@ -220,10 +226,82 @@ export function energyPreview(item, states) {
   return { title: pair, value: num(b, unit(b)) };
 }
 function when(w, key, e) {
-  if (typeof w !== 'object' || w === null) { e(`${key} musi być obiektem`); return; }
-  if (typeof w.entity !== 'string' || !ENTITY_RE.test(w.entity)) e(`Nieprawidłowa encja ${key}`);
+  if (typeof w !== 'object' || w === null || Array.isArray(w)) { e(`${key} musi być obiektem`); return; }
+  for (const k of Object.keys(w)) if (k !== 'entity' && k !== 'state') e(`Nieznane pole ${key}: ${k}`);
+  if (typeof w.entity !== 'string' || !ENTITY_RE.test(w.entity) || w.entity.length > 128) e(`Nieprawidłowa encja ${key}`);
   if (typeof w.state !== 'string' || !w.state.trim()) e('Wymagane pole state');
-  else if (w.state === 'unknown' || w.state === 'unavailable') e(`Brak danych nie może oznaczać ${key === 'visible_when' ? 'widoczności' : 'trybu prognozy'}`);
+  else if (w.state.length > 64) e('Nieprawidłowe pole state');
+  else if (w.state === 'unknown' || w.state === 'unavailable') e(`Brak danych nie może oznaczać ${key === 'visible_when' ? 'widoczności' : key === 'when' ? 'ostrzeżenia' : 'trybu prognozy'}`);
+}
+
+// --- alerts (SPEC 0.20, DashboardSpec.alerts) ---
+export const EMPTY_TYPES = ['energy', 'climate', 'weather', 'clock', 'tile'];
+const SOURCE_KEYS = ['title', 'entity', 'icon', 'when', 'off_entity', 'show_since'];
+function alerts(i, e) {
+  const size = (i.width === 1 && i.height === 1) || (i.width === 1 && i.height === 2) || (i.width === 2 && i.height === 1);
+  if (!size) e('Kafelek alerts ma rozmiar 1x1, 1x2 albo 2x1');
+  const list = Array.isArray(i.sources) ? i.sources : null;
+  if (!list || list.length === 0 || list.length > MAX_ITEMS) { e(`alerts wymaga od 1 do ${MAX_ITEMS} pozycji sources`); return; }
+  const seen = new Set();
+  for (const src of list) {
+    if (typeof src !== 'object' || src === null || Array.isArray(src)) { e('sources: pozycja musi być obiektem'); continue; }
+    for (const k of Object.keys(src)) if (!SOURCE_KEYS.includes(k)) e(`Nieznane pole sources: ${k}`);
+    field(src, 'title', 40, true, e);
+    const entity = field(src, 'entity', 128, true, e);
+    if (entity != null && !ENTITY_RE.test(entity)) e(`sources: nieprawidłowa encja ${entity}`);
+    when(src.when, 'when', e); // absent is "when musi być obiektem", as on the clock
+    if (src.when && typeof src.when === 'object') {
+      const key = `${src.when.entity}=${src.when.state}`;
+      if (seen.has(key)) e(`sources: powtórzony warunek ${src.when.entity} = ${src.when.state}`); else seen.add(key);
+    }
+    // present means present, also as JSON null - the clock rejects a null exactly like a wrong type
+    if ('off_entity' in src) { const off = field(src, 'off_entity', 128, true, e); if (off != null && !/^light\.[a-z0-9_]+$/.test(off)) e('off_entity wymaga encji z domeny light'); }
+    if ('show_since' in src && typeof src.show_since !== 'boolean') e('show_since musi być boolean');
+    if ('icon' in src) { const icon = field(src, 'icon', 40, true, e); if (icon != null && !(MDI_RE.test(icon) || LEGACY_ICONS.includes(icon))) e(`Nieznana ikona: ${icon}`); }
+  }
+  if (i.empty === undefined) return;
+  const x = i.empty;
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) { e('empty musi być obiektem'); return; }
+  for (const k of ['id', 'column', 'row', 'width', 'height', 'visible_when']) if (k in x) e(`empty: pole ${k} bierze się z kafelka alerts`);
+  const type = field(x, 'type', 16, true, e);
+  if (type == null) return;
+  if (!EMPTY_TYPES.includes(type)) { e(`empty: dozwolone typy ${EMPTY_TYPES.join(', ')}`); return; }
+  // the stand-in is validated as a card of its own in the tile's place, exactly as the clock does
+  const card = { ...x, id: i.id, column: i.column, row: i.row, width: i.width, height: i.height };
+  for (const err of validate({ pages: [{ id: 'empty', items: [card] }] })) e(err.msg);
+}
+/** Active/unknown/inactive per source, as the clock's AlertsModel decides it (a missing or unavailable entity is unknown). */
+export function alertsPreview(item, states) {
+  const sources = Array.isArray(item.sources) ? item.sources : [];
+  const active = [], unknown = [];
+  for (const s of sources) {
+    const w = s && s.when && states[s.when.entity];
+    if (!w || w.state === 'unknown' || w.state === 'unavailable') unknown.push(s);
+    else if (w.state === s.when.state) active.push({ s, lc: Date.parse(w.last_changed) || 0 });
+  }
+  active.sort((a, b) => (a.lc === 0) !== (b.lc === 0) ? (a.lc === 0 ? 1 : -1) : b.lc - a.lc);
+  const title = item.title || 'Uwagi';
+  if (active.length) return { title, value: `${active.length} · ${active[0].s.title}${active.length > 1 ? ' +' + (active.length - 1) : ''}${unknown.length ? ` · Brak danych: ${unknown.length}` : ''}`, state: 'active' };
+  if (unknown.length) return { title, value: '- · Brak danych', state: 'unknown' };
+  return { title, value: item.empty ? `0 · w tym miejscu: ${(TYPES[item.empty.type] || { label: item.empty.type }).label}` : '0 · Brak uwag', state: 'empty' };
+}
+/** The form edits sources flat (when -> when_entity/when_state); this is the wire shape back. */
+export function sourceFromForm(f) {
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return f; // not a source at all: kept as typed, validation names it
+  const t = (v) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+  const state = typeof f.when_state === 'string' && f.when_state.trim() ? f.when_state : ''; // compared exactly on the clock: never trimmed
+  const out = { title: t(f.title) || '', entity: t(f.entity) || '', when: { entity: t(f.when_entity) || '', state } };
+  if (t(f.icon)) out.icon = t(f.icon);
+  if (t(f.off_entity)) out.off_entity = t(f.off_entity);
+  if (f.show_since === false) out.show_since = false;
+  return out;
+}
+export function sourceToForm(s) {
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return { title: '', entity: '', when_entity: '', when_state: '', show_since: true }; // broken input: validation already names it
+  const f = { title: s.title, entity: s.entity, when_entity: s.when && s.when.entity, when_state: s.when && s.when.state, show_since: s.show_since !== false };
+  if (s.icon) f.icon = s.icon;
+  if (s.off_entity) f.off_entity = s.off_entity;
+  return f;
 }
 
 // --- forms (ha-form data is flat; nested wire fields are folded and unfolded here) ---
@@ -234,6 +312,7 @@ export function toForm(item) {
   if (item.forecast_when) { f.forecast_when_entity = item.forecast_when.entity; f.forecast_when_state = item.forecast_when.state; }
   if (item.confirmation) { f.confirm_enabled = item.confirmation.enabled; if (item.confirmation.text) f.confirm_text = item.confirmation.text; }
   if (item.type === 'tile') f.action = item.tap_action ? item.tap_action.action : defaultIntent(domainOf(item.entity));
+  if (item.type === 'alerts') { f.sources = (Array.isArray(item.sources) ? item.sources : []).map(sourceToForm); delete f.empty; if (item.empty !== undefined) f.empty_card = clone(item.empty); }
   if (item.covers) { f.cover1_entity = item.covers[0]?.entity; f.cover1_title = item.covers[0]?.title; f.cover2_entity = item.covers[1]?.entity; f.cover2_title = item.covers[1]?.title; }
   return f;
 }
@@ -247,6 +326,12 @@ export function fromForm(type, data) {
   if (type === 'tile') { const action = data.action || defaultIntent(domainOf(item.entity)); if (action !== defaultIntent(domainOf(item.entity)) || data.action === 'none') item.tap_action = { action }; }
   else if (def.action && data.tap_action_set) item.tap_action = { action: def.action };
   if (def.fields.includes('confirmation') && typeof data.confirm_enabled === 'boolean') { item.confirmation = { enabled: data.confirm_enabled }; if (text('confirm_text')) item.confirmation.text = text('confirm_text'); }
+  if (type === 'alerts') {
+    item.sources = Array.isArray(data.sources) ? data.sources.map(sourceFromForm) : data.sources == null ? [] : data.sources;
+    // anything typed that is not an empty object stays in the item, so validation names it instead of it vanishing on save
+    const x = data.empty_card;
+    if (x !== undefined && x !== null && x !== '' && !(typeof x === 'object' && !Array.isArray(x) && Object.keys(x).length === 0)) item.empty = clone(x);
+  }
   if (def.fields.includes('covers')) item.covers = [{ entity: text('cover1_entity') || '', title: text('cover1_title') || '' }, { entity: text('cover2_entity') || '', title: text('cover2_title') || '' }];
   return item;
 }
@@ -276,9 +361,21 @@ export function schemaFor(type, item, legacyVersion) {
     : { name: 'icon', selector: { icon: {} } });
   if (type === 'tile') s.push({ name: 'action', selector: { select: { mode: 'dropdown', options: allowedIntents(domainOf(item.entity)).map((v) => ({ value: v, label: INTENT_LABEL[v] })) } } });
   if (def.fields.includes('confirmation')) { s.push({ name: 'confirm_enabled', selector: { boolean: {} } }); s.push({ name: 'confirm_text', selector: { text: {} } }); }
+  if (type === 'alerts') {
+    s.push({ name: 'sources', required: true, selector: { object: { multiple: true, label_field: 'title', fields: {
+      title: { label: 'Tytuł', required: true, selector: { text: {} } },
+      entity: { label: 'Tekst w liście (encja)', required: true, selector: { entity: {} } },
+      when_entity: { label: 'Aktywne, gdy encja', required: true, selector: { entity: {} } },
+      when_state: { label: 'ma stan', required: true, selector: { text: {} } },
+      icon: { label: 'Ikona', selector: { icon: {} } },
+      off_entity: { label: 'Światła do zgaszenia (light)', selector: { entity: { domain: 'light' } } },
+      show_since: { label: 'Pokaż godzinę "Aktywne od"', selector: { boolean: {} } },
+    } } } });
+    s.push({ name: 'empty_card', selector: { object: {} } });
+  }
   if (def.fields.includes('covers')) for (const n of [1, 2]) { s.push({ name: `cover${n}_entity`, required: true, selector: { entity: { domain: 'cover' } } }); s.push({ name: `cover${n}_title`, required: true, selector: { text: {} } }); }
   s.push({ name: 'visible_entity', selector: { entity: {} } });
   s.push({ name: 'visible_state', selector: { text: {} } });
   return s;
 }
-export const LABELS = { load_entity: 'Zużycie domu (sensor)', battery_entity: 'Bateria w % (opcjonalnie)', id: 'Identyfikator', title: 'Tytuł', column: 'Kolumna', row: 'Wiersz', width: 'Szerokość', height: 'Wysokość', entity: 'Encja', temperature_entity: 'Czujnik temperatury', forecast_entity: 'Prognoza na jutro (sensor)', forecast_when_entity: 'Tryb prognozy: encja', forecast_when_state: 'Tryb prognozy: stan', attribute: 'Atrybut zamiast stanu', off_entity: 'Światła do zgaszenia (light)', icon: 'Ikona', action: 'Dotknięcie', confirm_enabled: 'Pytaj przed wykonaniem', confirm_text: 'Treść pytania', cover1_entity: 'Roleta A: encja', cover1_title: 'Roleta A: nazwa', cover2_entity: 'Roleta B: encja', cover2_title: 'Roleta B: nazwa', visible_entity: 'Widoczny, gdy encja', visible_state: 'ma stan' };
+export const LABELS = { sources: 'Ostrzeżenia', empty_card: `Karta w tym miejscu, gdy brak uwag (YAML bez id i pozycji; typy: ${EMPTY_TYPES.join(', ')}; puste = "Brak uwag")`, load_entity: 'Zużycie domu (sensor)', battery_entity: 'Bateria w % (opcjonalnie)', id: 'Identyfikator', title: 'Tytuł', column: 'Kolumna', row: 'Wiersz', width: 'Szerokość', height: 'Wysokość', entity: 'Encja', temperature_entity: 'Czujnik temperatury', forecast_entity: 'Prognoza na jutro (sensor)', forecast_when_entity: 'Tryb prognozy: encja', forecast_when_state: 'Tryb prognozy: stan', attribute: 'Atrybut zamiast stanu', off_entity: 'Światła do zgaszenia (light)', icon: 'Ikona', action: 'Dotknięcie', confirm_enabled: 'Pytaj przed wykonaniem', confirm_text: 'Treść pytania', cover1_entity: 'Roleta A: encja', cover1_title: 'Roleta A: nazwa', cover2_entity: 'Roleta B: encja', cover2_title: 'Roleta B: nazwa', visible_entity: 'Widoczny, gdy encja', visible_state: 'ma stan' };

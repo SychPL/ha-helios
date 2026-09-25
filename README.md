@@ -133,6 +133,11 @@ production / load pair is the value.
 **Thermostat** (`climate`, Helios 0.16 or newer): the measured temperature large, the setpoint under it; on the
 clock a tap opens the full control panel (setpoint, mode, preset, fan, swing).
 
+**Alerts** (`alerts`, Helios 0.17 or newer): every warning in one 1x1, 1x2 or 2x1 tile - the count and the newest
+few; on the clock a tap slides in the full list with "active since" times and an optional "turn off lights" button.
+Each source is a text entity plus a condition (`when`); an optional stand-in card (`empty`: energy, climate, weather,
+clock or tile) takes the tile's place while everything is known and nothing applies.
+
 It edits the `helios` section of a storage-mode dashboard through the frontend's
 `lovelace/config` and `lovelace/config/save` commands; everything else in that
 dashboard is left untouched. Before saving it re-reads the dashboard and
