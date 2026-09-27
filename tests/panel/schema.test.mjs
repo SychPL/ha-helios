@@ -294,3 +294,15 @@ test('wrong types in object fields, a null title and unknown confirmation keys a
   assert.deepEqual(one({ title: null }), ['Nieprawidłowe pole title']);
   assert.deepEqual(one({ confirmation: { enabled: true, unexpected: 1 } }), ['Nieznane pole confirmation: unexpected']);
 });
+
+test('alerts: a "done" button per source mirrors the clock (SPEC 0.20 pkt 4a)', () => {
+  const one = (s) => msgs({ pages: [{ id: 'main', items: [item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'Śmieci jutro', entity: 'sensor.s', when: { entity: 'binary_sensor.s', state: 'on' }, ...s }] })] }] });
+  assert.deepEqual(one({ done_entity: 'script.helios_smieci_wyniesione', done_label: 'Wyniesione' }), []);
+  assert.deepEqual(one({ done_entity: 'input_button.x' }), []);
+  assert.deepEqual(one({ done_entity: 'light.a' }), ['done_entity wymaga encji script, input_boolean, input_button albo button']);
+  assert.deepEqual(one({ done_label: 'Gotowe' }), ['done_label wymaga done_entity']);
+  assert.deepEqual(one({ done_entity: 'script.a', done_label: 'Bardzo dluga nazwa' }), ['Nieprawidłowe pole done_label']);
+  assert.deepEqual(one({ done_entity: 'script.a', off_entity: 'light.a' }), ['sources: off_entity i done_entity wykluczają się']);
+  const wire = item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'Śmieci jutro', entity: 'sensor.s', when: { entity: 'binary_sensor.s', state: 'on' }, done_entity: 'script.w', done_label: 'Wyniesione' }] });
+  assert.deepEqual(S.fromForm('alerts', S.toForm(wire)), wire);
+});
