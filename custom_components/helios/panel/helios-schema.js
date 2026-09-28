@@ -236,7 +236,7 @@ function when(w, key, e) {
 
 // --- alerts (SPEC 0.20, DashboardSpec.alerts) ---
 export const EMPTY_TYPES = ['energy', 'climate', 'weather', 'clock', 'tile'];
-const SOURCE_KEYS = ['title', 'entity', 'icon', 'when', 'off_entity', 'show_since', 'done_entity', 'done_label'];
+const SOURCE_KEYS = ['title', 'entity', 'icon', 'when', 'off_entity', 'show_since', 'done_entity', 'done_label', 'blink'];
 function alerts(i, e) {
   const size = (i.width === 1 && i.height === 1) || (i.width === 1 && i.height === 2) || (i.width === 2 && i.height === 1);
   if (!size) e('Kafelek alerts ma rozmiar 1x1, 1x2 albo 2x1');
@@ -257,6 +257,7 @@ function alerts(i, e) {
     // present means present, also as JSON null - the clock rejects a null exactly like a wrong type
     if ('off_entity' in src) { const off = field(src, 'off_entity', 128, true, e); if (off != null && !/^light\.[a-z0-9_]+$/.test(off)) e('off_entity wymaga encji z domeny light'); }
     if ('show_since' in src && typeof src.show_since !== 'boolean') e('show_since musi być boolean');
+    if ('blink' in src && typeof src.blink !== 'boolean') e('blink musi być boolean');
     // SPEC 0.20 pkt 4a: one "done" button per row, never together with "Zgaś"
     let done = null;
     if ('done_entity' in src) { done = field(src, 'done_entity', 128, true, e); if (done != null && !/^(script|input_boolean|input_button|button)\.[a-z0-9_]+$/.test(done)) e('done_entity wymaga encji script, input_boolean, input_button albo button'); }
@@ -299,6 +300,7 @@ export function sourceFromForm(f) {
   if (t(f.icon)) out.icon = t(f.icon);
   if (t(f.off_entity)) out.off_entity = t(f.off_entity);
   if (f.show_since === false) out.show_since = false;
+  if (f.blink === true) out.blink = true;
   if (t(f.done_entity)) { out.done_entity = t(f.done_entity); if (t(f.done_label)) out.done_label = t(f.done_label); }
   return out;
 }
@@ -307,6 +309,7 @@ export function sourceToForm(s) {
   const f = { title: s.title, entity: s.entity, when_entity: s.when && s.when.entity, when_state: s.when && s.when.state, show_since: s.show_since !== false };
   if (s.icon) f.icon = s.icon;
   if (s.off_entity) f.off_entity = s.off_entity;
+  f.blink = s.blink === true;
   if (s.done_entity) f.done_entity = s.done_entity;
   if (s.done_label) f.done_label = s.done_label;
   return f;
@@ -378,6 +381,7 @@ export function schemaFor(type, item, legacyVersion) {
       icon: { label: 'Ikona', selector: { icon: {} } },
       off_entity: { label: 'Światła do zgaszenia (light)', selector: { entity: { domain: 'light' } } },
       show_since: { label: 'Pokaż godzinę "Aktywne od"', selector: { boolean: {} } },
+      blink: { label: 'Lampka docka miga, póki trwa (tylko najważniejsze)', selector: { boolean: {} } },
       done_entity: { label: 'Przycisk "zrobione": skrypt / przełącznik / przycisk (zamiast Zgaś)', selector: { entity: { domain: ['script', 'input_boolean', 'input_button', 'button'] } } },
       done_label: { label: 'Napis na przycisku (do 12 znaków, domyślnie Zrobione)', selector: { text: {} } },
     } } } });

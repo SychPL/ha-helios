@@ -306,3 +306,11 @@ test('alerts: a "done" button per source mirrors the clock (SPEC 0.20 pkt 4a)', 
   const wire = item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'Śmieci jutro', entity: 'sensor.s', when: { entity: 'binary_sensor.s', state: 'on' }, done_entity: 'script.w', done_label: 'Wyniesione' }] });
   assert.deepEqual(S.fromForm('alerts', S.toForm(wire)), wire);
 });
+
+test('alerts: blink per source mirrors the clock (SPEC 0.20 pkt 4b)', () => {
+  const one = (s) => msgs({ pages: [{ id: 'main', items: [item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'Garaż', entity: 'sensor.g', when: { entity: 'binary_sensor.g', state: 'on' }, ...s }] })] }] });
+  assert.deepEqual(one({ blink: true }), []);
+  assert.deepEqual(one({ blink: 'tak' }), ['blink musi być boolean']);
+  const wire = item('uwagi', 'alerts', 1, 1, 2, 1, { sources: [{ title: 'Garaż', entity: 'sensor.g', when: { entity: 'binary_sensor.g', state: 'on' }, blink: true }, { title: 'B', entity: 'sensor.b', when: { entity: 'binary_sensor.b', state: 'on' } }] });
+  assert.deepEqual(S.fromForm('alerts', S.toForm(wire)), wire, 'blink kept when on, not added when off');
+});
