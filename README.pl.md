@@ -44,6 +44,8 @@ Protokół kanału (`helios/connect`, `helios/state`, `helios/result`) opisuje s
 
 ## Edytor dashboardu
 
+Karta **Odczyty (1–3 encje)** (`entities`) pokazuje od jednego do trzech wierszy w podanej kolejności. Wybierz encje na liście karty i opcjonalnie nadaj im krótkie nazwy. Dopuszcza dowolną domenę HA; wartości liczbowe mają najwyżej jedno miejsce po przecinku i jednostkę z encji, a brak encji, `unknown` lub `unavailable` daje `—` w danym wierszu. Karta służy do wyświetlania wartości. Domyślny tytuł to `Odczyty`, a ikona nagłówka `mdi:format-list-bulleted`. Przed zapisaniem karty zaktualizuj zegar do Heliosa 0.19 lub nowszego; starszy zegar odrzuci dokument i zachowa poprzedni układ. Schemat pulpitu pozostaje w wersji 6.
+
 Pozycja **Helios** w pasku bocznym (tylko administrator) to wizualny edytor układu zegara: siatka 4×3, strony, formularz na kartę. Kliknij pustą komórkę, aby dodać kartę; kliknij kartę, aby ją edytować lub usunąć. Wybór encji i ikon to formularze HA (`ha-form`); gdy się nie załadują, panel przechodzi na zwykłe pola z listą encji. Edytor sprawdza układ regułami i słowami zegara - to, co przyjmie, przyjmie też zegar.
 
 Edytuje sekcję `helios` pulpitu w trybie storage (domyślnie `helios-clock`, inny z listy) poleceniami frontendu `lovelace/config` i `lovelace/config/save`; reszta pulpitu zostaje nietknięta. Przed zapisem czyta pulpit ponownie i odmawia nadpisania wersji zmienionej w międzyczasie. Dokument w schemacie 2-5 wczytuje się jako jedna strona i przy pierwszym zapisie przechodzi na schemat 6 - wymaga to Heliosa 0.12; starszy zegar odrzuci dokument i zachowa poprzedni układ. JavaScript jest publiczny (bez sekretów); jedyną drogą zapisu jest `lovelace/config/save`, które HA udostępnia tylko administratorom.

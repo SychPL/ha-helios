@@ -30,6 +30,10 @@ button:disabled{opacity:.5;cursor:default}
 .card.bad{border-color:var(--error-color,#db4437)}
 .card .t{font-size:12px;color:#a8a296;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .v{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .readings{display:flex;flex-direction:column;justify-content:center;gap:3px;flex:1;min-height:0}
+.card .reading{display:flex;align-items:center;gap:6px;min-width:0;line-height:1.2}
+.card .reading .label{font-size:12px;color:#a8a296;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .reading .value{font-size:14px;text-align:right;max-width:62%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card ha-icon{--mdc-icon-size:16px}
 .side{background:var(--card-background-color);border-radius:12px;padding:16px;border:1px solid var(--divider-color)}
 .side h3{margin:0 0 12px}
@@ -290,12 +294,14 @@ class HeliosPanel extends HTMLElement {
     const cards = page.items.map((i) => {
       const def = S.TYPES[i.type], e = this._hass && i.entity ? this._hass.states[i.entity] : null;
       const title = i.title || (e && e.attributes.friendly_name) || (def ? def.label.split(' ')[0] : i.type);
-      const icon = i.type === 'alerts' ? 'mdi:bell-alert' : i.icon ? (i.icon.startsWith('mdi:') ? i.icon : 'mdi:' + i.icon) : (i.type === 'tile' ? S.DOMAIN_ICON[S.domainOf(i.entity)] : S.LEGACY_DEFAULT_ICON[i.type] ? 'mdi:' + S.LEGACY_DEFAULT_ICON[i.type] : null);
+      const icon = i.type === 'alerts' ? 'mdi:bell-alert' : i.icon ? (i.icon.startsWith('mdi:') ? i.icon : 'mdi:' + i.icon) : i.type === 'entities' ? 'mdi:format-list-bulleted' : (i.type === 'tile' ? S.DOMAIN_ICON[S.domainOf(i.entity)] : S.LEGACY_DEFAULT_ICON[i.type] ? 'mdi:' + S.LEGACY_DEFAULT_ICON[i.type] : null);
       const hs = (this._hass && this._hass.states) || {};
+      const readings = i.type === 'entities' ? S.entitiesPreview(i, hs) : null;
       const energy = i.type === 'energy' ? S.energyPreview(i, hs) : i.type === 'climate' ? S.climatePreview(i, hs) : i.type === 'alerts' ? S.alertsPreview(i, hs) : null;
       const value = energy ? energy.value : i.type === 'clock' ? '12:00' : i.type === 'music' ? '—' : i.type === 'cover_group' ? 'A / B' : e ? `${e.state}${e.attributes.unit_of_measurement ? ' ' + e.attributes.unit_of_measurement : ''}` : (i.entity || '');
+      const body = readings ? `<div class="readings">${readings.rows.map((r) => `<div class="reading"><span class="label" title="${esc(r.title)}">${esc(r.title)}</span><span class="value" title="${esc(r.value)}">${esc(r.value)}</span></div>`).join('')}</div>` : `<div class="v">${esc(value)}</div>`;
       return `<div class="card ${i.id === st.sel ? 'on' : ''} ${bad.has(i.id) ? 'bad' : ''}" data-act="card" data-id="${esc(i.id)}" style="grid-column:${i.column} / span ${i.width};grid-row:${i.row} / span ${i.height}">
-        <div class="t">${icon ? `<ha-icon icon="${esc(icon)}"></ha-icon>` : ''}<span>${esc(energy ? energy.title : title)}</span></div><div class="v">${esc(value)}</div>${i.visible_when ? '<div class="t">warunkowy</div>' : ''}</div>`;
+        <div class="t">${icon ? `<ha-icon icon="${esc(icon)}"></ha-icon>` : ''}<span>${esc(readings ? readings.title : energy ? energy.title : title)}</span></div>${body}${i.visible_when ? '<div class="t">warunkowy</div>' : ''}</div>`;
     });
     grid.innerHTML = cells.join('') + cards.join('');
   }
@@ -316,10 +322,11 @@ class HeliosPanel extends HTMLElement {
       const domainChanged = current.type === 'tile' && value.entity !== undefined && S.domainOf(value.entity) !== S.domainOf(current.entity);
       if (domainChanged) value = { ...value, action: S.defaultIntent(S.domainOf(value.entity)) }; // the old intent may not exist on the new domain
       const next = S.fromForm(current.type, { ...data, ...value });
+      const entriesSchemaChanged = current.type === 'entities' && JSON.stringify(S.schemaFor(current.type, current, st.legacyVersion)) !== JSON.stringify(S.schemaFor(next.type, next, st.legacyVersion));
       if (next.id !== current.id && this._allIds().includes(next.id)) { st.notice = `Powtórzony id: ${next.id}`; this._render(); return; }
       Object.assign(data, value);
       this._commit(next);
-      if (domainChanged) {
+      if (domainChanged || entriesSchemaChanged) {
         if (this._form) { this._form.schema = S.schemaFor(next.type, next, st.legacyVersion); this._form.data = data; } // the same object the commits mutate: a copy would freeze later edits at this moment
         else this._renderSide();
       }
@@ -359,7 +366,7 @@ function fallbackForm(schema, data, hass, commit) {
       input = document.createElement('textarea'); input.rows = 8; input.style.width = '100%'; input.style.fontFamily = 'monospace';
       input.value = data[s.name] == null ? '' : JSON.stringify(data[s.name], null, 1);
       input.addEventListener('change', () => {
-        if (!input.value.trim()) { commit({ [s.name]: s.name === 'sources' ? [] : undefined }); return; }
+        if (!input.value.trim()) { commit({ [s.name]: sel.object.multiple ? [] : undefined }); return; }
         try { commit({ [s.name]: JSON.parse(input.value) }); input.style.outline = ''; } catch (err) { input.style.outline = '2px solid var(--error-color,#db4437)'; } // JSON that does not parse stays out of the model
       });
       box.appendChild(input); continue;

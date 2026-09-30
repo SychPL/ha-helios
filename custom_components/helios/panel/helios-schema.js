@@ -12,6 +12,7 @@ export const TYPES = {
   clock: { label: 'Zegar', fields: [], entityDomain: null },
   weather: { label: 'Pogoda', fields: ['entity', 'temperature_entity', 'forecast_entity', 'forecast_when'], entityDomain: 'weather' },
   tile: { label: 'Kafelek (dowolna encja)', fields: ['entity', 'icon', 'attribute', 'tap_action', 'confirmation'], entityDomain: '' },
+  entities: { label: 'Odczyty (1–3 encje)', fields: ['entries', 'icon'], entityDomain: null },
   music: { label: 'Muzyka', fields: ['icon'], entityDomain: null, singleton: true },
   cover_group: { label: 'Dwie rolety', fields: ['covers', 'icon'], entityDomain: null },
   climate: { label: 'Termostat', fields: ['entity', 'icon'], entityDomain: 'climate' },
@@ -83,6 +84,7 @@ export function emptyItem(type, cell, taken, entity) {
   if (type === 'clock') { item.width = 2; item.height = 2; item.title = 'Dom'; }
   if (type === 'weather' || type === 'alerts') { item.width = 2; }
   if (type === 'alerts') item.sources = [];
+  if (type === 'entities') item.entries = [{ entity: entity || '' }];
   if (type === 'cover_group') item.covers = [{ entity: '', title: 'Roleta A' }, { entity: '', title: 'Roleta B' }];
   if (TYPES[type].entityDomain !== null) item.entity = entity || '';
   return item;
@@ -161,6 +163,7 @@ export function validate(model) {
       if ('title' in i && (typeof i.title !== 'string' || !i.title.trim() || i.title.length > 40)) e('Nieprawidłowe pole title');
       if (i.confirmation && typeof i.confirmation === 'object') for (const k of Object.keys(i.confirmation)) if (k !== 'enabled' && k !== 'text') e(`Nieznane pole confirmation: ${k}`);
       if (i.type === 'alerts') alerts(i, e);
+      if (i.type === 'entities') entries(i, e);
       if (i.forecast_when != null) when(i.forecast_when, 'forecast_when', e);
       if (i.visible_when != null) when(i.visible_when, 'visible_when', e);
       if (i.type === 'cover_group') {
@@ -203,6 +206,46 @@ function field(i, key, max, required, e) {
   const v = i[key];
   if (typeof v !== 'string' || !v.trim() || v.length > max) { e(`Nieprawidłowe pole ${key}`); return null; }
   return v;
+}
+/** Read-only readings: an ordered list with only an entity and an optional short label per row. */
+function entries(i, e) {
+  if (!Array.isArray(i.entries) || i.entries.length < 1 || i.entries.length > 3) { e('entities wymaga od 1 do 3 pozycji entries'); return; }
+  for (const entry of i.entries) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) { e('entries: pozycja musi być obiektem'); continue; }
+    for (const k of Object.keys(entry)) if (k !== 'entity' && k !== 'title') e(`Nieznane pole entries: ${k}`);
+    const entity = field(entry, 'entity', 128, true, e);
+    if (entity != null && !ENTITY_RE.test(entity)) e(`entries: nieprawidłowa encja ${entity}`);
+    field(entry, 'title', 40, false, e);
+  }
+}
+/** The clock's compact readings list; bad rows remain visible while their form is being edited. */
+export function entitiesPreview(item, states) {
+  const nonblank = (v) => typeof v === 'string' && v.trim() ? v : null;
+  const humanize = (id) => { const name = typeof id === 'string' ? id.slice(id.indexOf('.') + 1).replace(/_/g, ' ') : ''; return name ? name[0].toUpperCase() + name.slice(1) : 'Encja'; };
+  const decimal = new Intl.NumberFormat('pl-PL', { useGrouping: false, maximumFractionDigits: 1 });
+  const stateText = (id, state, attributes) => {
+    const domain = domainOf(id);
+    const translated = (values) => Object.hasOwn(values, state) ? values[state] : null;
+    if (domain === 'cover') return translated({ open: 'Otwarta', closed: 'Zamknięta', opening: 'Otwieranie…', closing: 'Zamykanie…' });
+    if (domain === 'lock') return translated({ locked: 'Zamknięty', unlocked: 'Otwarty', locking: 'Zamykanie…', unlocking: 'Otwieranie…', jammed: 'Zablokowany' });
+    if (domain === 'binary_sensor' && (state === 'on' || state === 'off')) {
+      if (['door', 'window', 'garage_door', 'opening', 'gate'].includes(attributes.device_class)) return state === 'on' ? 'Otwarte' : 'Zamknięte';
+      if (['motion', 'occupancy', 'presence', 'moving'].includes(attributes.device_class)) return state === 'on' ? 'Wykryto' : 'Brak';
+      return state === 'on' ? 'Tak' : 'Nie';
+    }
+    return translated({ on: 'Włączone', off: 'Wyłączone' });
+  };
+  const rows = (Array.isArray(item.entries) ? item.entries : []).map((entry) => {
+    const id = entry && entry.entity, entity = states[id], attributes = entity && entity.attributes || {};
+    const title = nonblank(entry && entry.title) || nonblank(attributes.friendly_name) || humanize(id);
+    if (!entity || !nonblank(entity.state) || entity.state === 'unknown' || entity.state === 'unavailable') return { title, value: '—' };
+    const number = Number(entity.state);
+    if (!Number.isFinite(number)) { const translated = stateText(id, entity.state, attributes); if (translated) return { title, value: translated }; }
+    const text = Number.isFinite(number) ? decimal.format(number) : entity.state;
+    const unit = nonblank(attributes.unit_of_measurement);
+    return { title, value: unit ? `${text} ${unit}` : text };
+  });
+  return { title: nonblank(item.title) || 'Odczyty', rows };
 }
 /** The clock's climate tile (CardBodies.climate, SPEC 0.19) for the preview: measured temperature, "Zadana 20,5°" under it. */
 export function climatePreview(item, states) {
@@ -323,6 +366,7 @@ export function toForm(item) {
   if (item.forecast_when) { f.forecast_when_entity = item.forecast_when.entity; f.forecast_when_state = item.forecast_when.state; }
   if (item.confirmation) { f.confirm_enabled = item.confirmation.enabled; if (item.confirmation.text) f.confirm_text = item.confirmation.text; }
   if (item.type === 'tile') f.action = item.tap_action ? item.tap_action.action : defaultIntent(domainOf(item.entity));
+  if (item.type === 'entities' && item.entries !== undefined) f.entries = clone(item.entries);
   if (item.type === 'alerts') { f.sources = (Array.isArray(item.sources) ? item.sources : []).map(sourceToForm); delete f.empty; if (item.empty !== undefined) f.empty_card = clone(item.empty); }
   if (item.covers) { f.cover1_entity = item.covers[0]?.entity; f.cover1_title = item.covers[0]?.title; f.cover2_entity = item.covers[1]?.entity; f.cover2_title = item.covers[1]?.title; }
   return f;
@@ -337,6 +381,7 @@ export function fromForm(type, data) {
   if (type === 'tile') { const action = data.action || defaultIntent(domainOf(item.entity)); if (action !== defaultIntent(domainOf(item.entity)) || data.action === 'none') item.tap_action = { action }; }
   else if (def.action && data.tap_action_set) item.tap_action = { action: def.action };
   if (def.fields.includes('confirmation') && typeof data.confirm_enabled === 'boolean') { item.confirmation = { enabled: data.confirm_enabled }; if (text('confirm_text')) item.confirmation.text = text('confirm_text'); }
+  if (type === 'entities' && data.entries !== undefined) item.entries = clone(data.entries);
   if (type === 'alerts') {
     item.sources = Array.isArray(data.sources) ? data.sources.map(sourceFromForm) : data.sources == null ? [] : data.sources;
     // anything typed that is not an empty object stays in the item, so validation names it instead of it vanishing on save
@@ -372,6 +417,14 @@ export function schemaFor(type, item, legacyVersion) {
     : { name: 'icon', selector: { icon: {} } });
   if (type === 'tile') s.push({ name: 'action', selector: { select: { mode: 'dropdown', options: allowedIntents(domainOf(item.entity)).map((v) => ({ value: v, label: INTENT_LABEL[v] })) } } });
   if (def.fields.includes('confirmation')) { s.push({ name: 'confirm_enabled', selector: { boolean: {} } }); s.push({ name: 'confirm_text', selector: { text: {} } }); }
+  if (type === 'entities') {
+    // The HA row selector dereferences every entry. Keep malformed typed lists in its YAML editor until repaired.
+    const structured = Array.isArray(item.entries) && item.entries.every((entry) => entry && typeof entry === 'object' && !Array.isArray(entry));
+    s.push({ name: 'entries', label: 'Odczyty (od 1 do 3, w kolejności wyświetlania)', required: true, selector: { object: structured ? { multiple: true, label_field: 'entity', fields: {
+      entity: { label: 'Encja', required: true, selector: { entity: {} } },
+      title: { label: 'Nazwa (opcjonalnie, do 40 znaków)', selector: { text: {} } },
+    } } : {} } });
+  }
   if (type === 'alerts') {
     s.push({ name: 'sources', required: true, selector: { object: { multiple: true, label_field: 'title', fields: {
       title: { label: 'Tytuł', required: true, selector: { text: {} } },

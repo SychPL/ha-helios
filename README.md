@@ -133,6 +133,14 @@ production / load pair is the value.
 **Thermostat** (`climate`, Helios 0.16 or newer): the measured temperature large, the setpoint under it; on the
 clock a tap opens the full control panel (setpoint, mode, preset, fan, swing).
 
+**Readings (1–3 entities)** (`entities`): one to three ordered rows, each with an entity and an optional short
+label. Select the entities in the card's list editor; any HA entity domain is accepted. Numeric states use at most
+one decimal place and their HA units; a missing, unknown or unavailable value shows `—` without hiding the other
+rows. The card displays values only. Its title defaults to `Odczyty`, and its header icon to
+`mdi:format-list-bulleted`. Update the clock to Helios 0.19 or newer before saving this card; older clocks reject the
+document and retain their previous layout. The dashboard schema stays at version 6. Drag list entries by their
+handles to change the display order.
+
 **Alerts** (`alerts`, Helios 0.17 or newer): every warning in one 1x1, 1x2 or 2x1 tile - the count and the newest
 few; on the clock a tap slides in the full list with "active since" times and an optional "turn off lights" button.
 Each source is a text entity plus a condition (`when`); an optional stand-in card (`empty`: energy, climate, weather,

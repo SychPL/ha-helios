@@ -30,6 +30,129 @@ const withItem = (id, patch) => { const m = example(); for (const p of m.pages) 
 const msgs = (m) => S.validate(m).map((e) => e.msg);
 const rejects = (m, msg) => assert.ok(msgs(m).some((x) => x.startsWith(msg)), `expected "${msg}", got ${JSON.stringify(msgs(m))}`);
 
+test('entities: displays three ordered readings from any HA entity domain', () => {
+  const m = { pages: [{ id: 'main', items: [item('odczyty', 'entities', 1, 1, 1, 1, {
+    entries: [{ entity: 'sensor.temperature', title: 'Temperatura' }, { entity: 'input_number.target' }, { entity: 'binary_sensor.window' }],
+  })] }] };
+  assert.deepEqual(S.validate(m), []);
+});
+
+test('entities: entries are required and limited to one through three readings', () => {
+  const doc = (extra) => ({ pages: [{ id: 'main', items: [item('odczyty', 'entities', 1, 1, 1, 1, extra)] }] });
+  for (const entries of [undefined, null, {}, [], [{ entity: 'sensor.a' }, { entity: 'sensor.b' }, { entity: 'sensor.c' }, { entity: 'sensor.d' }]]) {
+    assert.deepEqual(msgs(doc(entries === undefined ? {} : { entries })), ['entities wymaga od 1 do 3 pozycji entries']);
+  }
+  assert.deepEqual(msgs(doc({ entries: [{ entity: 'sensor.a' }] })), []);
+});
+
+test('entities: each entry strictly validates its HA id and optional label', () => {
+  const doc = (entry) => ({ pages: [{ id: 'main', items: [item('odczyty', 'entities', 1, 1, 1, 1, { entries: [entry] })] }] });
+  for (const [entry, want] of [
+    [null, 'entries: pozycja musi być obiektem'],
+    [[], 'entries: pozycja musi być obiektem'],
+    ['sensor.a', 'entries: pozycja musi być obiektem'],
+    [{}, 'Wymagane pole entity'],
+    [{ entity: null }, 'Nieprawidłowe pole entity'],
+    [{ entity: '' }, 'Nieprawidłowe pole entity'],
+    [{ entity: 'sensor.' }, 'entries: nieprawidłowa encja sensor.'],
+    [{ entity: 'sensor.' + 'a'.repeat(122) }, 'Nieprawidłowe pole entity'],
+    [{ entity: 'sensor.a', title: null }, 'Nieprawidłowe pole title'],
+    [{ entity: 'sensor.a', title: ' ' }, 'Nieprawidłowe pole title'],
+    [{ entity: 'sensor.a', title: 'x'.repeat(41) }, 'Nieprawidłowe pole title'],
+    [{ entity: 'sensor.a', icon: 'mdi:eye' }, 'Nieznane pole entries: icon'],
+    [{ entity: 'sensor.a', attribute: 'humidity' }, 'Nieznane pole entries: attribute'],
+    [{ entity: 'sensor.a', unit: '%' }, 'Nieznane pole entries: unit'],
+  ]) assert.deepEqual(msgs(doc(entry)), [want]);
+  assert.deepEqual(msgs(doc({ entity: 'sensor.a', title: 'x'.repeat(40) })), []);
+});
+
+test('entities: remains read-only and cannot replace an empty alerts card', () => {
+  const doc = (extra) => ({ pages: [{ id: 'main', items: [item('odczyty', 'entities', 1, 1, 1, 1, { entries: [{ entity: 'number.target' }], ...extra })] }] });
+  for (const extra of [{ tap_action: { action: 'toggle' } }, { confirmation: { enabled: true } }, { entity: 'sensor.a' }]) {
+    assert.ok(msgs(doc(extra)).length > 0);
+  }
+  assert.deepEqual(msgs(doc({ title: 'Liczby', icon: 'mdi:gauge' })), []);
+  const alerts = { pages: [{ id: 'main', items: [item('uwagi', 'alerts', 1, 1, 2, 1, {
+    sources: [{ title: 'A', entity: 'sensor.a', when: { entity: 'binary_sensor.a', state: 'on' } }],
+    empty: { type: 'entities', entries: [{ entity: 'sensor.a' }] },
+  })] }] };
+  assert.deepEqual(msgs(alerts), ['empty: dozwolone typy energy, climate, weather, clock, tile']);
+});
+
+test('entities: editing and saving preserve order and malformed typed entries for validation', () => {
+  const wire = item('odczyty', 'entities', 1, 1, 1, 1, { title: 'Salon', entries: [{ entity: 'sensor.c', title: 'CO₂' }, { entity: 'sensor.t' }] });
+  assert.deepEqual(S.fromForm('entities', S.toForm(wire)), wire);
+  assert.deepEqual(S.fromLovelace({ helios: { version: 6, pages: [{ id: 'main', items: [wire] }] } }).model, { pages: [{ id: 'main', items: [wire] }] });
+  for (const entries of [null, {}, [null], [{ entity: null }], [{ entity: 'sensor.a', title: null }], [{ entity: 'sensor.a', extra: true }]]) {
+    const bad = { ...wire, entries };
+    assert.deepEqual(S.fromForm('entities', S.toForm(bad)), bad);
+  }
+  const form = S.toForm(wire);
+  form.entries.reverse();
+  assert.equal(wire.entries[0].entity, 'sensor.c', 'editing the form must not mutate the saved model');
+  const schema = S.schemaFor('entities', wire, null).find((s) => s.name === 'entries');
+  assert.equal(schema.selector.object.multiple, true);
+  assert.deepEqual(schema.selector.object.fields.entity.selector, { entity: {} });
+  const fresh = S.emptyItem('entities', { column: 1, row: 1 }, []);
+  assert.deepEqual(fresh.entries, [{ entity: '' }]);
+});
+
+test('entities: malformed lists use an object editor until repaired instead of crashing a row picker', () => {
+  for (const entries of [null, {}, [null], ['sensor.a'], [[]]]) {
+    const schema = S.schemaFor('entities', { entries }, null).find((s) => s.name === 'entries');
+    assert.deepEqual(schema.selector, { object: {} });
+  }
+  const schema = S.schemaFor('entities', { entries: [{ entity: 'sensor.a' }] }, null).find((s) => s.name === 'entries');
+  assert.equal(schema.selector.object.multiple, true);
+});
+
+test('entities: preview keeps the row labels and formats numeric states with their own units', () => {
+  const i = { entries: [{ entity: 'sensor.temperature', title: 'Temp.' }, { entity: 'sensor.humidity' }, { entity: 'sensor.co2' }] };
+  const states = {
+    'sensor.temperature': { state: '23.46', attributes: { unit_of_measurement: '°C', friendly_name: 'Salon' } },
+    'sensor.humidity': { state: '51', attributes: { unit_of_measurement: '%', friendly_name: 'Wilgotność' } },
+    'sensor.co2': { state: '812', attributes: { unit_of_measurement: 'ppm' } },
+  };
+  assert.deepEqual(S.entitiesPreview(i, states), { title: 'Odczyty', rows: [
+    { title: 'Temp.', value: '23,5 °C' }, { title: 'Wilgotność', value: '51 %' }, { title: 'Co2', value: '812 ppm' },
+  ] });
+  assert.deepEqual(S.entitiesPreview({ title: 'Status', entries: [{ entity: 'sensor.next_visit' }, { entity: 'input_number.target' }] }, {
+    'sensor.next_visit': { state: 'jutro', attributes: {} }, 'input_number.target': { state: '-2.04', attributes: {} },
+  }), { title: 'Status', rows: [{ title: 'Next visit', value: 'jutro' }, { title: 'Target', value: '-2' }] });
+});
+
+test('entities: unavailable rows keep an em dash beside the remaining known values', () => {
+  assert.deepEqual(S.entitiesPreview({ entries: [{ entity: 'sensor.missing' }, { entity: 'sensor.unknown' }, { entity: 'sensor.offline' }] }, {
+    'sensor.unknown': { state: 'unknown', attributes: {} }, 'sensor.offline': { state: 'unavailable', attributes: { unit_of_measurement: '%' } },
+  }), { title: 'Odczyty', rows: [{ title: 'Missing', value: '—' }, { title: 'Unknown', value: '—' }, { title: 'Offline', value: '—' }] });
+  assert.deepEqual(S.entitiesPreview({ entries: [{ entity: 'sensor.missing' }, { entity: 'sensor.ok' }] }, {
+    'sensor.ok': { state: '42.04', attributes: { unit_of_measurement: 'W' } },
+  }).rows, [{ title: 'Missing', value: '—' }, { title: 'Ok', value: '42 W' }]);
+  assert.doesNotThrow(() => S.entitiesPreview({ entries: [null, { entity: null }] }, {}));
+});
+
+test('entities: text readings use the clock translations for binary sensors, covers and switches', () => {
+  for (const [entity, state, device_class, want] of [
+    ['cover.blind', 'opening', undefined, 'Otwieranie…'],
+    ['lock.front', 'jammed', undefined, 'Zablokowany'],
+    ['binary_sensor.window', 'on', 'window', 'Otwarte'],
+    ['binary_sensor.motion', 'off', 'motion', 'Brak'],
+    ['binary_sensor.dock', 'on', undefined, 'Tak'],
+    ['switch.socket', 'off', undefined, 'Wyłączone'],
+    ['sensor.status', 'ready', undefined, 'ready'],
+    ['sensor.status', 'toString', undefined, 'toString'],
+  ]) {
+    const preview = S.entitiesPreview({ entries: [{ entity }] }, { [entity]: { state, attributes: { device_class } } });
+    assert.equal(preview.rows[0].value, want);
+  }
+});
+
+test('entities: decimal half rounding matches the clock for positive and negative readings', () => {
+  for (const [state, want] of [['1.25', '1,3'], ['-1.25', '-1,3'], ['21.45', '21,5'], ['-0.04', '-0']]) {
+    assert.equal(S.entitiesPreview({ entries: [{ entity: 'sensor.n' }] }, { 'sensor.n': { state, attributes: {} } }).rows[0].value, want);
+  }
+});
+
 test('the example is valid and round-trips as version 6', () => {
   assert.deepEqual(S.validate(example()), []);
   const doc = S.toHelios(example());
