@@ -180,6 +180,12 @@ and keeps its previous layout. The JavaScript is public (no secrets in it); the
 only mutation path is `lovelace/config/save`, which Home Assistant gates to
 administrators.
 
+## Contributors
+
+[Mark Graham](https://github.com/markgraham924) created the original Spotify,
+Assist and Predbat editor support in his fork. It was adapted for ha-helios
+0.21; [NOTICE](NOTICE) links the source commits.
+
 ## Development
 
 ```bash
