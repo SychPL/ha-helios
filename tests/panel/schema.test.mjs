@@ -4,6 +4,68 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as S from '../../custom_components/helios/panel/helios-schema.js';
 
+test('dashboard compatibility uses the newest feature on every page and every clock sharing it', () => {
+  const model = { pages: [
+    { id: 'main', items: [S.emptyItem('tile', { column: 1, row: 1 }, [], 'sensor.a')] },
+    { id: 'today', items: [S.emptyItem('day_plan', { column: 1, row: 1 }, [])] },
+  ] };
+  assert.equal(S.requiredAppVersion(model), '0.21.0');
+  const clocks = [
+    { entry_id: 'a', name: 'A', dashboard_path: 'shared', app_version: '0.21.0' },
+    { entry_id: 'b', name: 'B', dashboard_path: 'shared', app_version: '0.19.0' },
+    { entry_id: 'c', name: 'C', dashboard_path: 'other', app_version: '0.12.0' },
+  ];
+  assert.deepEqual(S.incompatibleClocks(model, clocks, 'shared').map((c) => c.entry_id), ['b']);
+  clocks[1].app_version = '0.21.1';
+  assert.deepEqual(S.incompatibleClocks(model, clocks, 'shared'), []);
+  clocks[0].app_version = null;
+  assert.deepEqual(S.incompatibleClocks(model, clocks, 'shared').map((c) => c.entry_id), ['a']);
+});
+
+test('compatibility includes cards introduced in patch versions', () => {
+  const alerts = S.emptyItem('alerts', { column: 1, row: 1 }, []);
+  assert.equal(S.requiredAppVersion({ pages: [{ id: 'main', items: [alerts] }] }), '0.17.0');
+  alerts.sources = [{ blink: true, done_entity: 'input_button.done' }];
+  assert.equal(S.requiredAppVersion({ pages: [{ id: 'main', items: [alerts] }] }), '0.18.0');
+  alerts.sources[0].blink = false;
+  assert.equal(S.requiredAppVersion({ pages: [{ id: 'main', items: [alerts] }] }), '0.17.1');
+});
+
+test('day plan card keeps a calendar and optional task list through the editor', () => {
+  const item = S.emptyItem('day_plan', {column:1,row:1}, []);
+  assert.equal(item.width, 2); assert.equal(item.height, 2);
+  item.calendar_entity = 'calendar.home'; item.todo_entity = 'todo.home';
+  assert.deepEqual(S.validate({pages:[{id:'main',items:[item]}]}), []);
+  assert.deepEqual(S.fromForm('day_plan', S.toForm(item)), item);
+  const fields = S.schemaFor('day_plan', item).map((s) => s.name);
+  assert.ok(fields.includes('calendar_entity')); assert.ok(fields.includes('todo_entity'));
+  item.calendar_entity = 'sensor.wrong';
+  assert.ok(S.validate({pages:[{id:'main',items:[item]}]}).some((e) => e.msg.includes('calendar')));
+});
+
+// Adapted from Mark Graham's c93a21326565d336219b4a1cfef0b044edae6fc6 and 150f11c0a3efb00fb0e5a1634d092d7b09ae318e.
+test('local shortcuts accept only the fixed Spotify and Assist actions', () => {
+  const spotify = S.emptyItem('spotify', {column:1,row:1}, []);
+  const assistant = S.emptyItem('assistant', {column:2,row:1}, [], 'sensor.voice');
+  assert.equal(assistant.title, undefined); // the clock chooses its translated default
+  assert.equal(spotify.title, undefined);
+  assert.deepEqual(S.validate({pages:[{id:'office',items:[spotify,assistant]}]}), []);
+  spotify.package = 'other.app';
+  assert.ok(S.validate({pages:[{id:'office',items:[spotify,assistant]}]}).some(e => e.msg.includes('package')));
+});
+
+test('Predbat preview uses active status detail without a future target', () => {
+  const card = S.emptyItem('predbat', {column:1,row:1}, [], 'predbat.status');
+  assert.equal(card.title, undefined);
+  assert.deepEqual(S.validate({pages:[{id:'office',items:[card]}]}), []);
+  const states = {'predbat.status': {state:'Charging',attributes:{detail:' target 23%-100%'}}};
+  assert.deepEqual(S.predbatPreview(card,states),{value:'Ładowanie',detail:'23% → 100%'});
+  states['predbat.status'] = {state:'Exporting',attributes:{detail:'target 80%-67%'}};
+  assert.equal(S.predbatPreview(card,states).detail,'80% → 67%');
+  states['predbat.status'] = {state:'Demand',attributes:{}};
+  assert.equal(S.predbatPreview(card,states).detail,'Zwykłe zużycie własne');
+});
+
 const item = (id, type, column, row, width = 1, height = 1, extra = {}) => ({ id, type, column, row, width, height, ...extra });
 const tile = (id, entity, column, row, extra = {}) => item(id, 'tile', column, row, 1, 1, { entity, ...extra });
 function example() {

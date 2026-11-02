@@ -87,6 +87,6 @@ async def test_clocks_lists_device_names_areas_and_paths(hass, hass_ws_client):
     await admin.send_json({"id": 1, "type": "helios/clocks"})
     clocks = (await admin.receive_json())["result"]["clocks"]
     assert clocks == [
-        {"entry_id": bedroom.entry_id, "name": "Helios 0f3c1b2a", "area": None, "dashboard_path": "helios-clock", "online": False},
-        {"entry_id": office.entry_id, "name": "zegar gabinet", "area": "Biuro", "dashboard_path": "helios-gabinet", "online": True},
+        {"entry_id": bedroom.entry_id, "name": "Helios 0f3c1b2a", "area": None, "dashboard_path": "helios-clock", "app_version": "0.13.0", "online": False},
+        {"entry_id": office.entry_id, "name": "zegar gabinet", "area": "Biuro", "dashboard_path": "helios-gabinet", "app_version": "0.13.0", "online": True},
     ]
