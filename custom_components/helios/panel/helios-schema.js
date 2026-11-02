@@ -14,6 +14,10 @@ export const TYPES = {
   tile: { label: 'Kafelek (dowolna encja)', fields: ['entity', 'icon', 'attribute', 'tap_action', 'confirmation'], entityDomain: '' },
   entities: { label: 'Odczyty (1–3 encje)', fields: ['entries', 'icon'], entityDomain: null },
   music: { label: 'Muzyka', fields: ['icon'], entityDomain: null, singleton: true },
+  spotify: { label: 'Spotify', fields: ['icon'], entityDomain: null },
+  assistant: { label: 'Asystent', fields: ['entity', 'icon'], entityDomain: 'sensor' },
+  predbat: { label: 'Predbat', fields: ['entity', 'icon'], entityDomain: 'predbat' },
+  day_plan: { label: 'Plan dnia', fields: ['calendar_entity', 'todo_entity', 'icon'], entityDomain: null },
   cover_group: { label: 'Dwie rolety', fields: ['covers', 'icon'], entityDomain: null },
   climate: { label: 'Termostat', fields: ['entity', 'icon'], entityDomain: 'climate' },
   energy: { label: 'Energia (PV, dom, bateria)', fields: ['entity', 'load_entity', 'battery_entity', 'icon'], entityDomain: 'sensor' },
@@ -23,6 +27,38 @@ export const TYPES = {
   cover: { label: 'Roleta (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'cover', legacy: true, action: 'controls' },
   garage: { label: 'Brama (wersja 2-5)', fields: ['entity', 'icon', 'tap_action', 'confirmation'], entityDomain: 'cover', legacy: true, action: 'close' },
 };
+// First clock release that can parse each card. Schema 6 itself starts at 0.12.0.
+const CARD_MIN_APP = { energy: '0.14.0', climate: '0.16.0', alerts: '0.17.0', entities: '0.19.0', spotify: '0.20.0', assistant: '0.20.0', predbat: '0.20.0', day_plan: '0.21.0' };
+function versionParts(version) {
+  const match = typeof version === 'string' && /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  return match ? match.slice(1).map(Number) : null;
+}
+function compareVersions(a, b) {
+  const left = versionParts(a), right = versionParts(b);
+  if (!left || !right) return null;
+  for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return Math.sign(left[i] - right[i]);
+  return 0;
+}
+export function requiredAppVersion(model) {
+  let required = '0.12.0';
+  const raise = (version) => { if (compareVersions(version, required) > 0) required = version; };
+  for (const page of model?.pages || []) for (const item of page.items || []) {
+    raise(CARD_MIN_APP[item.type] || '0.12.0');
+    if (item.type === 'weather' && item.forecast_entity) raise('0.13.0');
+    if (item.type === 'alerts') {
+      for (const source of item.sources || []) {
+        if (source.done_entity) raise('0.17.1');
+        if (source.blink) raise('0.18.0');
+      }
+    }
+  }
+  return required;
+}
+export function incompatibleClocks(model, clocks, dashboardPath) {
+  const required = requiredAppVersion(model);
+  return clocks.filter((clock) => clock.dashboard_path === dashboardPath &&
+    (compareVersions(clock.app_version, required) === null || compareVersions(clock.app_version, required) < 0));
+}
 export const DOMAIN_ICON = { light: 'mdi:lightbulb', switch: 'mdi:toggle-switch', input_boolean: 'mdi:toggle-switch', fan: 'mdi:fan', cover: 'mdi:window-shutter', lock: 'mdi:lock', sensor: 'mdi:eye', binary_sensor: 'mdi:radiobox-blank', climate: 'mdi:thermostat', script: 'mdi:script-text', scene: 'mdi:palette', input_button: 'mdi:gesture-tap-button', button: 'mdi:gesture-tap-button', media_player: 'mdi:cast', weather: 'mdi:weather-partly-cloudy' };
 export const LEGACY_DEFAULT_ICON = { energy: 'solar-power', entity: 'information', light: 'lightbulb', cover: 'window-shutter', garage: 'garage-open', music: 'music', cover_group: 'window-shutter' };
 
@@ -79,9 +115,15 @@ export function toHelios(model) {
 export function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
 // --- new items ---
+const ITEM_ID_STEMS = { spotify: 'spotify', assistant: 'asystent', predbat: 'predbat', day_plan: 'plan_dnia' };
 export function emptyItem(type, cell, taken, entity) {
-  const item = { id: slug(TYPES[type].label.split(' ')[0], taken), type, column: cell.column, row: cell.row, width: 1, height: 1 };
+  const item = { id: slug(ITEM_ID_STEMS[type] || TYPES[type].label.split(' ')[0], taken), type, column: cell.column, row: cell.row, width: 1, height: 1 };
   if (type === 'clock') { item.width = 2; item.height = 2; item.title = 'Dom'; }
+  // Leave the title unset so the clock uses its locale-specific default.
+  if (type === 'spotify') item.icon = 'mdi:spotify';
+  if (type === 'assistant') item.icon = 'mdi:microphone';
+  if (type === 'predbat') item.icon = 'mdi:battery-sync';
+  if (type === 'day_plan') { item.width = 2; item.height = 2; item.icon = 'mdi:calendar-check'; }
   if (type === 'weather' || type === 'alerts') { item.width = 2; }
   if (type === 'alerts') item.sources = [];
   if (type === 'entities') item.entries = [{ entity: entity || '' }];
@@ -157,6 +199,11 @@ export function validate(model) {
         const load = field(i, 'load_entity', 128, true, e), battery = field(i, 'battery_entity', 128, false, e);
         if (load != null && !/^sensor\.[a-z0-9_]+$/.test(load)) e('load_entity wymaga encji sensor');
         if (battery != null && !/^sensor\.[a-z0-9_]+$/.test(battery)) e('battery_entity wymaga encji sensor');
+      }
+      if (i.type === 'day_plan') {
+        const calendar = field(i, 'calendar_entity', 128, true, e), todo = field(i, 'todo_entity', 128, false, e);
+        if (calendar != null && !/^calendar\.[a-z0-9_]+$/.test(calendar)) e('calendar_entity wymaga encji calendar');
+        if (todo != null && !/^todo\.[a-z0-9_]+$/.test(todo)) e('todo_entity wymaga encji todo');
       }
       // present as null is present on the clock (JSONObject.has), and then not an object
       for (const k of ['tap_action', 'confirmation', 'visible_when', 'forecast_when']) if (k in i && (typeof i[k] !== 'object' || i[k] === null || Array.isArray(i[k]))) e(`${k} musi być obiektem`);
@@ -375,7 +422,7 @@ export function fromForm(type, data) {
   const def = TYPES[type], item = { id: data.id, type, column: data.column, row: data.row, width: data.width, height: data.height };
   const text = (k) => (typeof data[k] === 'string' && data[k].trim() ? data[k].trim() : undefined);
   if (text('title')) item.title = text('title');
-  for (const k of ['entity', 'load_entity', 'battery_entity', 'temperature_entity', 'forecast_entity', 'attribute', 'off_entity', 'icon']) if (def.fields.includes(k) && text(k)) item[k] = text(k);
+  for (const k of ['entity', 'load_entity', 'battery_entity', 'temperature_entity', 'forecast_entity', 'attribute', 'off_entity', 'calendar_entity', 'todo_entity', 'icon']) if (def.fields.includes(k) && text(k)) item[k] = text(k);
   if (def.fields.includes('forecast_when') && (text('forecast_when_entity') || text('forecast_when_state'))) item.forecast_when = { entity: text('forecast_when_entity') || '', state: text('forecast_when_state') || '' };
   if (text('visible_entity') || text('visible_state')) item.visible_when = { entity: text('visible_entity') || '', state: text('visible_state') || '' };
   if (type === 'tile') { const action = data.action || defaultIntent(domainOf(item.entity)); if (action !== defaultIntent(domainOf(item.entity)) || data.action === 'none') item.tap_action = { action }; }
@@ -403,6 +450,10 @@ export function schemaFor(type, item, legacyVersion) {
     { name: 'height', required: true, selector: { number: { min: 1, max: ROWS, mode: 'box' } } },
   ] });
   if (def.entityDomain !== null) s.push({ name: 'entity', required: true, selector: { entity: def.entityDomain ? { domain: def.entityDomain } : {} }, ...(type === 'energy' ? { label: 'Moc z PV (sensor)' } : {}) });
+  if (type === 'day_plan') {
+    s.push({ name: 'calendar_entity', required: true, selector: { entity: { domain: 'calendar' } } });
+    s.push({ name: 'todo_entity', selector: { entity: { domain: 'todo' } } });
+  }
   if (def.fields.includes('load_entity')) { s.push({ name: 'load_entity', required: true, selector: { entity: { domain: 'sensor' } } }); s.push({ name: 'battery_entity', selector: { entity: { domain: 'sensor' } } }); }
   if (def.fields.includes('temperature_entity')) s.push({ name: 'temperature_entity', selector: { entity: { domain: 'sensor' } } });
   if (def.fields.includes('forecast_entity')) {
@@ -445,4 +496,17 @@ export function schemaFor(type, item, legacyVersion) {
   s.push({ name: 'visible_state', selector: { text: {} } });
   return s;
 }
-export const LABELS = { sources: 'Ostrzeżenia', empty_card: `Karta w tym miejscu, gdy brak uwag (YAML bez id i pozycji; typy: ${EMPTY_TYPES.join(', ')}; puste = "Brak uwag")`, load_entity: 'Zużycie domu (sensor)', battery_entity: 'Bateria w % (opcjonalnie)', id: 'Identyfikator', title: 'Tytuł', column: 'Kolumna', row: 'Wiersz', width: 'Szerokość', height: 'Wysokość', entity: 'Encja', temperature_entity: 'Czujnik temperatury', forecast_entity: 'Prognoza na jutro (sensor)', forecast_when_entity: 'Tryb prognozy: encja', forecast_when_state: 'Tryb prognozy: stan', attribute: 'Atrybut zamiast stanu', off_entity: 'Światła do zgaszenia (light)', icon: 'Ikona', action: 'Dotknięcie', confirm_enabled: 'Pytaj przed wykonaniem', confirm_text: 'Treść pytania', cover1_entity: 'Roleta A: encja', cover1_title: 'Roleta A: nazwa', cover2_entity: 'Roleta B: encja', cover2_title: 'Roleta B: nazwa', visible_entity: 'Widoczny, gdy encja', visible_state: 'ma stan' };
+export const LABELS = { sources: 'Ostrzeżenia', empty_card: `Karta w tym miejscu, gdy brak uwag (YAML bez id i pozycji; typy: ${EMPTY_TYPES.join(', ')}; puste = "Brak uwag")`, load_entity: 'Zużycie domu (sensor)', battery_entity: 'Bateria w % (opcjonalnie)', calendar_entity: 'Kalendarz', todo_entity: 'Lista zadań (opcjonalnie)', id: 'Identyfikator', title: 'Tytuł', column: 'Kolumna', row: 'Wiersz', width: 'Szerokość', height: 'Wysokość', entity: 'Encja', temperature_entity: 'Czujnik temperatury', forecast_entity: 'Prognoza na jutro (sensor)', forecast_when_entity: 'Tryb prognozy: encja', forecast_when_state: 'Tryb prognozy: stan', attribute: 'Atrybut zamiast stanu', off_entity: 'Światła do zgaszenia (light)', icon: 'Ikona', action: 'Dotknięcie', confirm_enabled: 'Pytaj przed wykonaniem', confirm_text: 'Treść pytania', cover1_entity: 'Roleta A: encja', cover1_title: 'Roleta A: nazwa', cover2_entity: 'Roleta B: encja', cover2_title: 'Roleta B: nazwa', visible_entity: 'Widoczny, gdy encja', visible_state: 'ma stan' };
+
+/** Read the active execution detail only; future charge/export plans are separate data. */
+export function predbatPreview(item, states) {
+  const entity = states[item.entity];
+  if (!entity || ['unavailable', 'unknown'].includes(entity.state)) return {value:'Brak danych',detail:''};
+  let detail=String(entity.attributes?.detail || '').trim();
+  if (/^target \d+(\.\d+)?%-\d+(\.\d+)?%$/.test(detail)) detail=detail.slice(7).replace('%-','% → ');
+  const labels={Charging:'Ładowanie',Exporting:'Oddawanie energii',Demand:'Pobór energii',
+    'Hold charging':'Wstrzymane ładowanie','Hold exporting':'Wstrzymane oddawanie',
+    'Freeze charging':'Zamrożone ładowanie','Freeze exporting':'Zamrożone oddawanie'};
+  if(entity.state==='Demand' && !detail)detail='Zwykłe zużycie własne';
+  return {value:labels[entity.state] || entity.state,detail};
+}

@@ -147,6 +147,13 @@ class HeliosPanel extends HTMLElement {
     const urlPath = st.urlPath, model = st.model;
     st.saving = true; this._render();
     try {
+      const clocks = (await this._hass.callWS({ type: 'helios/clocks' })).clocks;
+      st.clocks = clocks;
+      const incompatible = S.incompatibleClocks(model, clocks, urlPath);
+      if (incompatible.length) {
+        st.notice = `Nie zapisano: układ wymaga Heliosa ${S.requiredAppVersion(model)}. Zaktualizuj zegary korzystające z tego pulpitu: ${incompatible.map((c) => `${c.name} (${c.app_version || 'wersja nieznana'})`).join(', ')}.`;
+        return;
+      }
       const fresh = await this._fetch(urlPath);
       if (JSON.stringify(fresh.helios ?? null) !== st.baseline) {
         st.doc = fresh; const parsed = S.fromLovelace(fresh); st.model = parsed.model; st.legacyVersion = parsed.legacyVersion;
@@ -254,8 +261,8 @@ class HeliosPanel extends HTMLElement {
     const st = this.state, root = this.shadowRoot;
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const known = st.dashboards.some((d) => d.url_path === st.urlPath), clock = this._clock(), sharing = this._sharing();
-    const clocks = `<div class="tabs clocks">${st.clocks.map((c) => `<button class="${c.entry_id === st.clockId ? 'on' : ''}" data-act="clock" data-id="${esc(c.entry_id)}" ${st.saving ? 'disabled' : ''} title="${c.online ? 'połączony' : 'rozłączony'}"><span class="dot ${c.online ? 'online' : ''}"></span>${esc(c.name)}${c.area ? ` · ${esc(c.area)}` : ''}</button>`).join('')}</div>`;
-    const where = clock ? `<div class="muted">Dashboard: ${esc(st.urlPath)}${sharing.length ? ` · wspólny z: ${sharing.map((c) => esc(c.name)).join(', ')}` : ''}</div>` : '';
+    const clocks = `<div class="tabs clocks">${st.clocks.map((c) => `<button class="${c.entry_id === st.clockId ? 'on' : ''}" data-act="clock" data-id="${esc(c.entry_id)}" ${st.saving ? 'disabled' : ''} title="${c.online ? 'połączony' : 'rozłączony'}"><span class="dot ${c.online ? 'online' : ''}"></span>${esc(c.name)}${c.area ? ` · ${esc(c.area)}` : ''} · v${esc(c.app_version || '?')}</button>`).join('')}</div>`;
+    const where = clock ? `<div class="muted">Dashboard: ${esc(st.urlPath)}${sharing.length ? ` · wspólny z: ${sharing.map((c) => esc(c.name)).join(', ')}` : ''}${st.model ? ` · wymaga Heliosa ${S.requiredAppVersion(st.model)}` : ''}</div>` : '';
     const bar = `${clocks}<div class="bar">
       ${known ? '' : '<button data-act="create">Utwórz pulpit</button>'}
       ${clock && known && sharing.length ? `<button id="own" data-act="own" ${st.saving || st.dirty ? 'disabled' : ''} title="${st.dirty ? 'Najpierw zapisz albo przeładuj' : 'Kopia bieżącego dokumentu tylko dla tego zegara'}">Własny dashboard</button>` : ''}
@@ -298,8 +305,9 @@ class HeliosPanel extends HTMLElement {
       const hs = (this._hass && this._hass.states) || {};
       const readings = i.type === 'entities' ? S.entitiesPreview(i, hs) : null;
       const energy = i.type === 'energy' ? S.energyPreview(i, hs) : i.type === 'climate' ? S.climatePreview(i, hs) : i.type === 'alerts' ? S.alertsPreview(i, hs) : null;
-      const value = energy ? energy.value : i.type === 'clock' ? '12:00' : i.type === 'music' ? '—' : i.type === 'cover_group' ? 'A / B' : e ? `${e.state}${e.attributes.unit_of_measurement ? ' ' + e.attributes.unit_of_measurement : ''}` : (i.entity || '');
-      const body = readings ? `<div class="readings">${readings.rows.map((r) => `<div class="reading"><span class="label" title="${esc(r.title)}">${esc(r.title)}</span><span class="value" title="${esc(r.value)}">${esc(r.value)}</span></div>`).join('')}</div>` : `<div class="v">${esc(value)}</div>`;
+      const plan = i.type === 'predbat' ? S.predbatPreview(i, hs) : null;
+      const value = plan ? plan.value : energy ? energy.value : i.type === 'day_plan' ? 'Wydarzenia i zadania na zegarze' : i.type === 'spotify' ? 'Otwórz' : i.type === 'assistant' ? (e && e.state !== 'idle' ? e.state : 'Rozmawiaj') : i.type === 'clock' ? '12:00' : i.type === 'music' ? '—' : i.type === 'cover_group' ? 'A / B' : e ? `${e.state}${e.attributes.unit_of_measurement ? ' ' + e.attributes.unit_of_measurement : ''}` : (i.entity || '');
+      const body = readings ? `<div class="readings">${readings.rows.map((r) => `<div class="reading"><span class="label" title="${esc(r.title)}">${esc(r.title)}</span><span class="value" title="${esc(r.value)}">${esc(r.value)}</span></div>`).join('')}</div>` : `<div class="v">${esc(value)}</div>${plan && plan.detail ? `<div class="t">${esc(plan.detail)}</div>` : ''}`;
       return `<div class="card ${i.id === st.sel ? 'on' : ''} ${bad.has(i.id) ? 'bad' : ''}" data-act="card" data-id="${esc(i.id)}" style="grid-column:${i.column} / span ${i.width};grid-row:${i.row} / span ${i.height}">
         <div class="t">${icon ? `<ha-icon icon="${esc(icon)}"></ha-icon>` : ''}<span>${esc(readings ? readings.title : energy ? energy.title : title)}</span></div>${body}${i.visible_when ? '<div class="t">warunkowy</div>' : ''}</div>`;
     });

@@ -198,6 +198,7 @@ def ws_clocks(hass: HomeAssistant, connection, msg: dict) -> None:
             "name": (device.name_by_user or device.name) if device else entry.title,
             "area": area.name if area else None,
             "dashboard_path": dashboard_path_for(dict(entry.data)),
+            "app_version": entry.data.get("app_version"),
             "online": coordinator is not None and coordinator.connection is not None,
         })
     clocks.sort(key=lambda c: (c["name"] or "").casefold())

@@ -8,6 +8,17 @@ clock with a six-digit code and hands it everything it needs to run.
 
 No pip dependencies, push only (`iot_class: local_push`).
 
+## Version compatibility
+
+Starting with 0.21, `ha-helios` and the clock app share the same major and
+minor number for a feature release: `ha-helios` 0.21.x and Helios 0.21.x.
+Patch numbers can differ. The dashboard editor shows each paired clock's app
+version and the minimum version needed by the cards on the dashboard. It
+refuses to save when a clock using that dashboard is too old or its version
+is unknown. Update the clocks first or create a separate dashboard for the
+newer clock. Older cards can still run on older app versions; the editor checks
+the actual cards. The device WebSocket protocol is versioned separately.
+
 ## What you get
 
 | Entity | Source on the clock |
@@ -129,6 +140,19 @@ entry and sent to the app in the `connection` event.
 The card list includes **Energy (PV, house, battery)** (`energy`, Helios 0.14 or newer on the clock): PV
 production and house load on top, the battery charge large under it; without a battery sensor the
 production / load pair is the value.
+
+**Spotify** (`spotify`) opens the installed Spotify app on the clock. **Assistant**
+(`assistant`) starts its existing Home Assistant Assist conversation; select the
+clock's voice-state sensor to show its current state. **Predbat** (`predbat`)
+shows a `predbat.*` entity's current status and `detail` attribute without
+calling a service or showing future targets. These cards require Helios 0.20 or
+newer on the clock and this integration's editor 0.21 or newer. The editor
+adaptations are credited in [NOTICE](NOTICE).
+
+**Today at a glance** (`day_plan`) selects one calendar and, optionally, one
+to-do list. The clock displays the next remaining event today and up to two
+open tasks; both sources are read-only and refresh every five minutes. This
+card requires Helios 0.21 or newer on the clock and editor 0.21 or newer.
 
 **Thermostat** (`climate`, Helios 0.16 or newer): the measured temperature large, the setpoint under it; on the
 clock a tap opens the full control panel (setpoint, mode, preset, fan, swing).

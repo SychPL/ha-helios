@@ -2,6 +2,17 @@
 
 Integracja dla zegara z aplikacją [Helios](https://github.com/SychPL/helios) (Lenovo Smart Clock 2 jako dashboard i satelita głosowy Home Assistant). Zegar łączy się z HA własnym gniazdem WebSocket; ta integracja rejestruje urządzenie i encje po stronie HA. Bez zależności pip, wyłącznie push (`iot_class: local_push`).
 
+## Zgodność wersji
+
+Od wydania 0.21 integracja i aplikacja mają wspólny numer główny i poboczny:
+`ha-helios` 0.21.x odpowiada Heliosowi 0.21.x. Numery poprawek mogą się
+różnić. Edytor pokazuje wersję każdego sparowanego zegara i minimalną wersję
+wymaganą przez karty na pulpicie. Nie zapisze układu, jeżeli zegar korzystający
+z tego pulpitu ma za starą lub nieznaną wersję. Najpierw zaktualizuj zegary
+albo przydziel nowszemu własny pulpit. Starsze karty działają także na
+starszych aplikacjach; edytor sprawdza faktyczne karty. Protokół urządzenia ma
+oddzielny numer wersji.
+
 ## Co daje
 
 | Encja | Źródło |
@@ -43,6 +54,18 @@ Ponowne parowanie tego samego zegara odświeża istniejący wpis (nowy token, st
 Protokół kanału (`helios/connect`, `helios/state`, `helios/result`) opisuje specyfikacja w repozytorium aplikacji: `docs/SPEC-0.7-home-assistant-integration.md`.
 
 ## Edytor dashboardu
+
+Karty **Spotify** (`spotify`), **Asystent** (`assistant`) i **Predbat** (`predbat`)
+pojawiły się w edytorze 0.21 i wymagają Heliosa 0.20 na zegarze. Spotify otwiera
+lokalną aplikację; Asystent uruchamia istniejącą rozmowę Assist i może pokazać
+stan czujnika głosu zegara; Predbat pokazuje tylko bieżący stan encji `predbat.*`
+oraz jej atrybut `detail`, bez wysyłania poleceń. Autor zmian źródłowych jest
+wskazany w [NOTICE](NOTICE).
+
+Karta **Plan dnia** (`day_plan`) wybiera jeden kalendarz i opcjonalną listę
+zadań. Pokazuje najbliższe pozostałe dziś wydarzenie i najwyżej dwa otwarte
+zadania; odświeża się co pięć minut i niczego nie zapisuje w HA. Wymaga
+Heliosa 0.21 na zegarze i edytora 0.21.
 
 Karta **Odczyty (1–3 encje)** (`entities`) pokazuje od jednego do trzech wierszy w podanej kolejności. Wybierz encje na liście karty i opcjonalnie nadaj im krótkie nazwy. Dopuszcza dowolną domenę HA; wartości liczbowe mają najwyżej jedno miejsce po przecinku i jednostkę z encji, a brak encji, `unknown` lub `unavailable` daje `—` w danym wierszu. Karta służy do wyświetlania wartości. Domyślny tytuł to `Odczyty`, a ikona nagłówka `mdi:format-list-bulleted`. Przed zapisaniem karty zaktualizuj zegar do Heliosa 0.19 lub nowszego; starszy zegar odrzuci dokument i zachowa poprzedni układ. Schemat pulpitu pozostaje w wersji 6.
 

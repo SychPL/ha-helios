@@ -1,0 +1,8 @@
+Helios Home Assistant integration
+Copyright 2026 Mateusz Sych
+
+Spotify and Assist card editor support adapted from Mark Graham's Helios fork:
+https://github.com/markgraham924/ha-helios/commit/c93a21326565d336219b4a1cfef0b044edae6fc6
+
+Predbat card editor support adapted from Mark Graham's Helios fork:
+https://github.com/markgraham924/ha-helios/commit/150f11c0a3efb00fb0e5a1634d092d7b09ae318e
