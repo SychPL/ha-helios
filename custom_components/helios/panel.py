@@ -26,7 +26,6 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         sidebar_icon="mdi:clock-digital",
         frontend_url_path=PANEL_URL_PATH,
         require_admin=True,
-        config_panel_domain=DOMAIN,
         config={
             "dashboard_path": DASHBOARD_PATH,
             "version": str(version),
