@@ -32,6 +32,8 @@ async def test_panel_is_registered_admin_only_with_a_versioned_module(hass):
     assert custom["name"] == "helios-panel" and custom["embed_iframe"] is False
     assert custom["module_url"] == f"{PANEL_STATIC_URL}/helios-panel.js?v={VERSION}"
     assert panel.config["dashboard_path"] == "helios-clock" and panel.config["version"] == VERSION
+    # no config_panel_domain: with it the integration's Configure button opens this panel instead of the options flow (#1)
+    assert panel.config_panel_domain is None
     # a reload finds the panel already there instead of raising "Overwriting panel"
     assert await hass.config_entries.async_reload(entry.entry_id)
     assert PANEL_URL_PATH in hass.data[frontend.DATA_PANELS]
